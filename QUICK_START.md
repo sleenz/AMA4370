@@ -106,7 +106,7 @@ Score = (Win_Rate × 0.25) + (Sharpe × 0.20) + (Profit_Factor × 0.20) +
 
 ```json
 {
-  "etherscan_api_key": "UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH",
+  "etherscan_api_key": "API HERE (RECOMMENDED)",
   "bscscan_api_key": "YOUR_BSCSCAN_API_KEY_HERE",
   "rate_limit_per_second": 5,
   "max_retries": 5,
