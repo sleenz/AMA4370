@@ -1,0 +1,10 @@
+# Core dependencies
+requests>=2.31.0
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.11.0
+
+# Optional: For future enhancements
+# pandas>=2.0.0  # Data analysis
+# numpy>=1.24.0  # Numerical computations

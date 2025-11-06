@@ -1,0 +1,7 @@
+{
+  "etherscan_api_key": "YOUR_ETHERSCAN_API_KEY_HERE",
+  "bscscan_api_key": "YOUR_BSCSCAN_API_KEY_HERE",
+  "rate_limit_per_second": 5,
+  "max_retries": 5,
+  "request_timeout": 30
+}
