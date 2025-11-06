@@ -1,0 +1,64 @@
+2025-11-06 10:15:37,567 - __main__ - INFO - ======================================================================
+2025-11-06 10:15:37,568 - __main__ - INFO - WALLET ANALYZER - Starting
+2025-11-06 10:15:37,568 - __main__ - INFO - ======================================================================
+2025-11-06 10:15:37,568 - __main__ - INFO - Loaded 5 wallets from discovered_wallets.csv
+2025-11-06 10:15:37,569 - wallet_discovery - INFO - Loaded config from config/api_keys.json
+2025-11-06 10:15:37,569 - __main__ - INFO - API clients initialized
+2025-11-06 10:15:37,569 - __main__ - INFO - 
+============================================================
+2025-11-06 10:15:37,569 - __main__ - INFO - Analyzing 0x28C6c062... on ethereum
+2025-11-06 10:15:37,569 - __main__ - INFO - ============================================================
+2025-11-06 10:15:37,569 - __main__ - DEBUG - Fetching transactions for 0x28C6c062... (90 days)
+2025-11-06 10:15:37,574 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): api.etherscan.io:443
+2025-11-06 10:15:49,036 - urllib3.connectionpool - DEBUG - https://api.etherscan.io:443 "GET /api?module=account&action=txlist&address=0x28C6c06298d514Db089934071355E5743bf21d60&startblock=0&endblock=99999999&sort=desc&apikey=UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH HTTP/1.1" 200 245
+2025-11-06 10:15:49,037 - wallet_discovery - DEBUG - API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,037 - wallet_discovery - ERROR - Failed to fetch transactions for 0x28C6c06298d514Db089934071355E5743bf21d60: API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,038 - __main__ - WARNING - No transactions found for 0x28C6c062...
+2025-11-06 10:15:49,039 - __main__ - WARNING - 0x28C6c062...: No trades found
+2025-11-06 10:15:49,039 - __main__ - INFO - 
+============================================================
+2025-11-06 10:15:49,039 - __main__ - INFO - Analyzing 0x21a31Ee1... on ethereum
+2025-11-06 10:15:49,039 - __main__ - INFO - ============================================================
+2025-11-06 10:15:49,039 - __main__ - DEBUG - Fetching transactions for 0x21a31Ee1... (90 days)
+2025-11-06 10:15:49,041 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): api.etherscan.io:443
+2025-11-06 10:15:49,383 - urllib3.connectionpool - DEBUG - https://api.etherscan.io:443 "GET /api?module=account&action=txlist&address=0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549&startblock=0&endblock=99999999&sort=desc&apikey=UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH HTTP/1.1" 200 245
+2025-11-06 10:15:49,383 - wallet_discovery - DEBUG - API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,383 - wallet_discovery - ERROR - Failed to fetch transactions for 0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549: API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,385 - __main__ - WARNING - No transactions found for 0x21a31Ee1...
+2025-11-06 10:15:49,385 - __main__ - WARNING - 0x21a31Ee1...: No trades found
+2025-11-06 10:15:49,385 - __main__ - INFO - 
+============================================================
+2025-11-06 10:15:49,385 - __main__ - INFO - Analyzing 0x742d35Cc... on ethereum
+2025-11-06 10:15:49,385 - __main__ - INFO - ============================================================
+2025-11-06 10:15:49,385 - __main__ - DEBUG - Fetching transactions for 0x742d35Cc... (90 days)
+2025-11-06 10:15:49,387 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): api.etherscan.io:443
+2025-11-06 10:15:49,968 - urllib3.connectionpool - DEBUG - https://api.etherscan.io:443 "GET /api?module=account&action=txlist&address=0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb&startblock=0&endblock=99999999&sort=desc&apikey=UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH HTTP/1.1" 200 245
+2025-11-06 10:15:49,969 - wallet_discovery - DEBUG - API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,969 - wallet_discovery - ERROR - Failed to fetch transactions for 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb: API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:49,970 - __main__ - WARNING - No transactions found for 0x742d35Cc...
+2025-11-06 10:15:49,970 - __main__ - WARNING - 0x742d35Cc...: No trades found
+2025-11-06 10:15:49,970 - __main__ - INFO - 
+============================================================
+2025-11-06 10:15:49,970 - __main__ - INFO - Analyzing 0xBE0eB53F... on ethereum
+2025-11-06 10:15:49,970 - __main__ - INFO - ============================================================
+2025-11-06 10:15:49,970 - __main__ - DEBUG - Fetching transactions for 0xBE0eB53F... (90 days)
+2025-11-06 10:15:49,973 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): api.etherscan.io:443
+2025-11-06 10:15:50,231 - urllib3.connectionpool - DEBUG - https://api.etherscan.io:443 "GET /api?module=account&action=txlist&address=0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8&startblock=0&endblock=99999999&sort=desc&apikey=UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH HTTP/1.1" 200 245
+2025-11-06 10:15:50,232 - wallet_discovery - DEBUG - API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:50,232 - wallet_discovery - ERROR - Failed to fetch transactions for 0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8: API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:50,233 - __main__ - WARNING - No transactions found for 0xBE0eB53F...
+2025-11-06 10:15:50,234 - __main__ - WARNING - 0xBE0eB53F...: No trades found
+2025-11-06 10:15:50,234 - __main__ - INFO - 
+============================================================
+2025-11-06 10:15:50,234 - __main__ - INFO - Analyzing 0x88888888... on ethereum
+2025-11-06 10:15:50,234 - __main__ - INFO - ============================================================
+2025-11-06 10:15:50,234 - __main__ - DEBUG - Fetching transactions for 0x88888888... (90 days)
+2025-11-06 10:15:50,236 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): api.etherscan.io:443
+2025-11-06 10:15:50,603 - urllib3.connectionpool - DEBUG - https://api.etherscan.io:443 "GET /api?module=account&action=txlist&address=0x8888888888888888888888888888888888888888&startblock=0&endblock=99999999&sort=desc&apikey=UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH HTTP/1.1" 200 245
+2025-11-06 10:15:50,604 - wallet_discovery - DEBUG - API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:50,604 - wallet_discovery - ERROR - Failed to fetch transactions for 0x8888888888888888888888888888888888888888: API error: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration
+2025-11-06 10:15:50,605 - __main__ - WARNING - No transactions found for 0x88888888...
+2025-11-06 10:15:50,606 - __main__ - WARNING - 0x88888888...: No trades found
+2025-11-06 10:15:50,606 - __main__ - INFO - 
+Analyzed 0 / 5 wallets successfully
+2025-11-06 10:15:50,606 - __main__ - ERROR - No wallets successfully analyzed
