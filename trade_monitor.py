@@ -42,8 +42,14 @@ from threading import Lock
 import sys
 import uuid
 
+# Web3 for DEX parsing
+from web3 import Web3
+
 # Import TokenBucket from wallet_discovery
 from wallet_discovery import TokenBucket, load_config
+
+# Import comprehensive DEX parser
+from dex_parser import DexParser, SwapInfo
 
 # Configure logging
 logging.basicConfig(
@@ -318,124 +324,15 @@ class TransactionFetcher:
 
 
 # ============================================================================
-# DEX PARSER (UNISWAP V2)
+# DEX PARSER - Now using comprehensive dex_parser.py module
 # ============================================================================
-
-class DEXParser:
-    """
-    Parse DEX transactions and extract trade information.
-
-    Phase 2.1.A: Supports Uniswap V2 only
-    Phase 2.1.B: Will add Uniswap V3, PancakeSwap, etc.
-
-    Features:
-        - Event log parsing (not calldata)
-        - WETH/stablecoin detection for BUY/SELL classification
-        - USD price conversion
-
-    Known DEX Signatures:
-        - Uniswap V2 Swap: 0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822
-    """
-
-    # Uniswap V2 Swap event signature
-    UNISWAP_V2_SWAP_SIGNATURE = '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822'
-
-    # Known stablecoins and WETH
-    STABLECOINS = {
-        '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  # WETH
-        '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',  # USDC
-        '0xdac17f958d2ee523a2206206994597c13d831ec7',  # USDT
-        '0x6b175474e89094c44da98b954eedeac495271d0f',  # DAI
-        '0x4fabb145d64652a948d72533023f6e7a623c7c53',  # BUSD
-    }
-
-    def __init__(self):
-        self.price_cache: Dict[str, Tuple[float, float]] = {}  # address -> (price, timestamp)
-        self.price_cache_ttl = 300  # 5 minutes
-
-    def parse_transaction(
-        self,
-        tx: RawTransaction,
-        wallet_address: str
-    ) -> Optional[ParsedTrade]:
-        """
-        Parse transaction and extract DEX trade information.
-
-        Args:
-            tx: Raw transaction data
-            wallet_address: Address being monitored
-
-        Returns:
-            ParsedTrade if DEX swap detected, None otherwise
-        """
-        # For Phase 2.1.A, we'll use a simplified approach:
-        # Check if transaction involves known DEX routers and has value transfer
-
-        # TODO: In production, this should fetch and parse event logs from tx receipt
-        # For now, we'll detect based on transaction patterns
-
-        # Check if this is a token transfer to/from wallet
-        # In a real implementation, we'd fetch logs via eth_getTransactionReceipt
-
-        # SIMPLIFIED: Check if transaction has significant value
-        value_wei = int(tx.value) if tx.value else 0
-        value_eth = value_wei / 10**18
-
-        if value_eth < 0.01:  # Skip dust
-            return None
-
-        # Detect action based on direction
-        if tx.from_address == wallet_address.lower():
-            action = 'SELL'
-        elif tx.to_address == wallet_address.lower():
-            action = 'BUY'
-        else:
-            return None
-
-        # For demo purposes, classify as ETH trade
-        # In production, would decode logs to get actual token
-
-        return ParsedTrade(
-            tx_hash=tx.tx_hash,
-            block_number=tx.block_number,
-            timestamp=tx.timestamp,
-            wallet_address=wallet_address,
-            token_address='0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  # WETH
-            token_symbol='WETH',
-            action=action,
-            amount_usd=value_eth * 3400,  # Simplified price
-            dex_protocol='uniswap_v2',
-            leverage_multiplier=1
-        )
-
-    def get_token_price(self, token_address: str) -> float:
-        """
-        Get USD price for token (cached).
-
-        Args:
-            token_address: Token contract address
-
-        Returns:
-            float: Price in USD
-        """
-        # Check cache
-        if token_address in self.price_cache:
-            price, cached_at = self.price_cache[token_address]
-            if time.time() - cached_at < self.price_cache_ttl:
-                return price
-
-        # For Phase 2.1.A, use fixed prices
-        # Phase 2.1.B will integrate with price oracle (Coingecko/Uniswap)
-
-        fixed_prices = {
-            '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 3400.0,  # WETH
-            '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 1.0,     # USDC
-            '0xdac17f958d2ee523a2206206994597c13d831ec7': 1.0,     # USDT
-        }
-
-        price = fixed_prices.get(token_address.lower(), 100.0)  # Default $100
-        self.price_cache[token_address] = (price, time.time())
-        return price
+# The old simplified DEXParser class has been removed and replaced with
+# the comprehensive DexParser from dex_parser.py that supports:
+# - Uniswap V2/V3
+# - PancakeSwap V2/V3
+# - Event log parsing
+# - Multi-hop swaps
+# - CoinGecko price integration
 
 
 # ============================================================================
@@ -820,6 +717,17 @@ class TradeMonitor:
         # Load configuration
         config = load_config(config_path)
 
+        # Initialize Web3 connection for DEX parsing
+        web3_provider = config.get('web3_provider_uri', 'https://eth.llamarpc.com')
+        try:
+            self.w3 = Web3(Web3.HTTPProvider(web3_provider))
+            if not self.w3.isConnected():
+                logger.warning(f"Web3 connection failed to {web3_provider}, DEX parsing will be limited")
+                self.w3 = None
+        except Exception as e:
+            logger.warning(f"Failed to initialize Web3: {e}, DEX parsing will be limited")
+            self.w3 = None
+
         # Initialize components
         self.fetcher = TransactionFetcher(
             api_key=config['etherscan_api_key'],
@@ -827,7 +735,18 @@ class TradeMonitor:
             chainid=config.get('chainid', 1),
             rate_limit=config.get('rate_limit', 5.0)
         )
-        self.parser = DEXParser()
+
+        # Initialize comprehensive DEX parser
+        if self.w3:
+            self.parser = DexParser(
+                w3=self.w3,
+                etherscan_api_key=config.get('etherscan_api_key'),
+                coingecko_api_key=config.get('coingecko_api_key')
+            )
+        else:
+            logger.warning("DEX parser not initialized (no Web3 connection)")
+            self.parser = None
+
         self.leverage_detector = LeverageDetector()
         self.signal_emitter = SignalEmitter(
             db_path=db_path,
@@ -846,6 +765,8 @@ class TradeMonitor:
         logger.info(f"Check interval: {check_interval}s")
         logger.info(f"Paper mode: {paper_mode}")
         logger.info(f"API: Etherscan V2 (chainid={config.get('chainid', 1)})")
+        logger.info(f"Web3: {'Connected' if self.w3 and self.w3.isConnected() else 'Not connected'}")
+        logger.info(f"DEX Parser: {'Enabled' if self.parser else 'Disabled'}")
 
     def load_tracked_wallets(self) -> List[WalletState]:
         """
@@ -937,10 +858,28 @@ class TradeMonitor:
 
             # Process each transaction
             for tx in transactions:
-                # Parse DEX swap
-                trade = self.parser.parse_transaction(tx, wallet.address)
-                if not trade:
+                # Parse DEX swap using comprehensive parser
+                if not self.parser:
+                    logger.debug("DEX parser not available, skipping transaction")
                     continue
+
+                swap_info = self.parser.parse_transaction(tx.tx_hash, wallet.address)
+                if not swap_info:
+                    continue
+
+                # Convert SwapInfo to ParsedTrade
+                trade = ParsedTrade(
+                    tx_hash=swap_info.tx_hash,
+                    block_number=swap_info.block_number,
+                    timestamp=swap_info.timestamp,
+                    wallet_address=swap_info.wallet_address,
+                    token_address=swap_info.token_out,  # Track acquired token
+                    token_symbol=swap_info.token_out_symbol,
+                    action=swap_info.action,
+                    amount_usd=swap_info.amount_out_usd,
+                    dex_protocol=swap_info.dex_protocol,
+                    leverage_multiplier=1  # Will be updated by leverage detector
+                )
 
                 # Detect leverage
                 leverage = self.leverage_detector.detect_leverage(tx, trade)
