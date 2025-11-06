@@ -175,6 +175,10 @@ class BlockchainAPIClient:
         max_retries = max_retries or self.max_retries
         params['apikey'] = self.api_key
 
+        # Add chainid for V2 API (if client has chainid attribute)
+        if hasattr(self, 'chainid'):
+            params['chainid'] = self.chainid
+
         for attempt in range(max_retries):
             try:
                 # Rate limiting
@@ -363,10 +367,11 @@ class EtherscanClient(BlockchainAPIClient):
     def __init__(self, api_key: str, rate_limit: float = 5.0):
         super().__init__(
             api_key=api_key,
-            base_url='https://api.etherscan.io/api',
+            base_url='https://api.etherscan.io/v2/api',
             rate_limit=rate_limit
         )
         self.chain_name = 'ethereum'
+        self.chainid = 1  # Ethereum mainnet
 
     def _get_blocks_per_day(self) -> int:
         """Ethereum: ~7200 blocks per day (12s block time)."""
@@ -420,6 +425,7 @@ class BSCScanClient(BlockchainAPIClient):
             rate_limit=rate_limit
         )
         self.chain_name = 'bsc'
+        self.chainid = 56  # BSC mainnet
 
     def _get_blocks_per_day(self) -> int:
         """BSC: ~28800 blocks per day (3s block time)."""
