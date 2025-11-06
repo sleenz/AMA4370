@@ -27,6 +27,20 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 
+# Import edge case handlers
+from edge_case_handlers import (
+    WalletBalanceEstimator,
+    SignalAggregator,
+    SlippageCalculator,
+    SignalQueue,
+    cap_extreme_leverage,
+    adjust_position_for_leverage_cap,
+    BalanceEstimate,
+    AggregatedSignal,
+    SlippageEstimate,
+    QueuedSignal
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,6 +106,13 @@ class Position:
     passed_liquidity_check: bool = False
     passed_risk_check: bool = False
     rejection_reason: Optional[str] = None
+
+    # Aggregation tracking
+    source_signals: Optional[str] = None  # JSON array of signal IDs
+    source_wallets: Optional[str] = None  # JSON array of wallet addresses
+    aggregation_count: int = 1
+    aggregation_multiplier: float = 1.0
+    wallet_contributions: Optional[str] = None  # JSON object {wallet: contribution_usd}
 
     @property
     def is_open(self) -> bool:
@@ -393,7 +414,14 @@ class PositionManager:
                 passed_token_check BOOLEAN,
                 passed_liquidity_check BOOLEAN,
                 passed_risk_check BOOLEAN,
-                rejection_reason TEXT
+                rejection_reason TEXT,
+
+                -- Aggregation tracking fields
+                source_signals TEXT,
+                source_wallets TEXT,
+                aggregation_count INTEGER DEFAULT 1,
+                aggregation_multiplier REAL DEFAULT 1.0,
+                wallet_contributions TEXT
             )
         """)
 
@@ -426,8 +454,9 @@ class PositionManager:
                     wallet_allocation_pct, trade_multiplier, trader_position_pct, capital_at_risk_pct,
                     source_token, source_token_symbol, source_amount_usd, source_leverage,
                     entry_price, slippage_tolerance,
-                    status, passed_token_check, passed_liquidity_check, passed_risk_check, rejection_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, passed_token_check, passed_liquidity_check, passed_risk_check, rejection_reason,
+                    source_signals, source_wallets, aggregation_count, aggregation_multiplier, wallet_contributions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 position.id, position.signal_id, position.wallet_address, position.created_at.isoformat(),
                 position.exchange, position.pair, position.side,
@@ -436,7 +465,8 @@ class PositionManager:
                 position.wallet_allocation_pct, position.trade_multiplier, position.trader_position_pct, position.capital_at_risk_pct,
                 position.source_token, position.source_token_symbol, position.source_amount_usd, position.source_leverage,
                 position.entry_price, position.slippage_tolerance,
-                position.status, position.passed_token_check, position.passed_liquidity_check, position.passed_risk_check, position.rejection_reason
+                position.status, position.passed_token_check, position.passed_liquidity_check, position.passed_risk_check, position.rejection_reason,
+                position.source_signals, position.source_wallets, position.aggregation_count, position.aggregation_multiplier, position.wallet_contributions
             ))
 
             conn.commit()
@@ -608,6 +638,20 @@ class SignalProcessor:
         self.position_manager = PositionManager(db_path)
         self.risk_manager = RiskManager(self.config, self.position_manager)
 
+        # Initialize edge case handlers
+        self.balance_estimator = WalletBalanceEstimator(db_path)
+        self.signal_aggregator = SignalAggregator(
+            self.config.get('signal_aggregation', {}),
+            db_path
+        )
+        self.slippage_calculator = SlippageCalculator(
+            self.config.get('slippage', {})
+        )
+        self.signal_queue = SignalQueue(
+            self.config.get('signal_queue', {}),
+            db_path
+        )
+
         # Configuration
         self.total_capital_usd = self.config.get('total_capital_usd', 100000)
         self.trade_multiplier = self.config.get('trade_multiplier', 0.5)
@@ -636,6 +680,47 @@ class SignalProcessor:
         Returns:
             Position if signal passes all filters, None otherwise
         """
+        try:
+            return self._process_signal_internal(signal)
+        except Exception as e:
+            # Check if this is an exchange-related error that should trigger queueing
+            error_msg = str(e).lower()
+            is_exchange_error = any(
+                keyword in error_msg
+                for keyword in ['timeout', 'connection', 'unavailable', 'maintenance', '503', '504']
+            )
+
+            if is_exchange_error:
+                logger.warning(f"Exchange appears to be down: {e}")
+                logger.info("Queueing signal for retry...")
+
+                # Get token mapping for queueing
+                token_mapping = self.token_mapper.map_token(signal.token_address)
+                if token_mapping:
+                    queued = self.signal_queue.add(signal, token_mapping)
+                    if queued:
+                        logger.info(f"Signal queued successfully (queue size: {len(self.signal_queue.queue)})")
+                    else:
+                        logger.warning("Failed to queue signal (queue full or signal expired)")
+                else:
+                    logger.warning("Cannot queue signal - token not mapped")
+
+                return None
+            else:
+                # Unknown error - log and re-raise
+                logger.error(f"Unexpected error processing signal: {e}")
+                raise
+
+    def _process_signal_internal(self, signal) -> Optional[Position]:
+        """
+        Internal signal processing logic (wrapped by process_signal for error handling).
+
+        Args:
+            signal: TradeSignal from trade_monitor
+
+        Returns:
+            Position if signal passes all filters, None otherwise
+        """
         self.signals_processed += 1
 
         logger.info(f"\n{'='*70}")
@@ -651,9 +736,63 @@ class SignalProcessor:
 
         logger.info(f"✓ Token mapped: {signal.token_symbol} → {token_mapping.cex_pair}")
 
-        # Step 2: Position Sizing (calculate before liquidity check to know size)
-        logger.info("Step 2: Position Sizing Calculation...")
-        position = self._calculate_position(signal, token_mapping)
+        # Step 1b: Signal Aggregation Check
+        logger.info("Step 1b: Signal Aggregation Check...")
+
+        # Calculate individual position size and get wallet rank for aggregation
+        temp_position = self._calculate_position(signal, token_mapping)
+        wallet_allocation_pct = self._get_wallet_allocation(signal.wallet_address)
+
+        # Get wallet rank from database
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT rank FROM wallets WHERE address = ?", (signal.wallet_address.lower(),))
+        row = cursor.fetchone()
+        conn.close()
+        wallet_rank = row[0] if row else 999  # Default to low rank if not found
+
+        # Add signal to aggregator with individual size and rank
+        self.signal_aggregator.add_signal(
+            signal=signal,
+            token_mapping=token_mapping,
+            individual_size=temp_position.size_usd,
+            wallet_rank=wallet_rank
+        )
+
+        # Check if we should aggregate with other pending signals
+        should_aggregate = self.signal_aggregator.should_aggregate(
+            pair=token_mapping.cex_pair,
+            new_signal_time=signal.created_at
+        )
+
+        if should_aggregate:
+            # Get all signals to aggregate (including this one)
+            signals_to_aggregate = self.signal_aggregator.get_signals_to_aggregate(
+                pair=token_mapping.cex_pair,
+                new_signal_time=signal.created_at
+            )
+
+            logger.info(
+                f"✓ Aggregating {len(signals_to_aggregate)} signals for {token_mapping.cex_pair}"
+            )
+
+            # Aggregate them (signals_to_aggregate already has the right format)
+            aggregated = self.signal_aggregator.aggregate(
+                signals=signals_to_aggregate
+            )
+
+            # Create position from aggregated signal
+            position = self._create_position_from_aggregated(aggregated, token_mapping)
+
+            logger.info(
+                f"✓ Aggregated position: {len(aggregated.source_signals)} signals → "
+                f"${aggregated.aggregated_size_usd:.2f} (multiplier: {aggregated.aggregation_multiplier:.2f}x)"
+            )
+
+        else:
+            # No aggregation - process signal normally (use already calculated position)
+            logger.info("✓ No aggregation needed (single signal)")
+            position = temp_position
 
         # Step 3: Liquidity Check
         logger.info("Step 3: Liquidity Check...")
@@ -666,6 +805,36 @@ class SignalProcessor:
 
         # Update position with liquidity data
         position.entry_price = liquidity.ask_price if signal.action == 'BUY' else liquidity.bid_price
+
+        # Step 3b: Slippage Check (using same orderbook from liquidity checker)
+        logger.info("Step 3b: Slippage Estimation...")
+        orderbook = self.liquidity_checker._fetch_orderbook(token_mapping.cex_pair)
+        slippage_estimate = self.slippage_calculator.estimate(
+            pair=token_mapping.cex_pair,
+            side=signal.action,
+            position_size_usd=position.notional_usd,  # Use notional for slippage calc
+            orderbook=orderbook
+        )
+
+        if not slippage_estimate.is_acceptable:
+            logger.warning(
+                f"Slippage too high: {slippage_estimate.expected_slippage_pct:.3f}% "
+                f"(threshold: {self.slippage_calculator.acceptable_slippage_pct}%)"
+            )
+
+            # If slippage is extremely high (>2%), reject the signal
+            if slippage_estimate.expected_slippage_pct > 2.0:
+                self._reject_signal(signal, 'excessive_slippage')
+                return None
+
+            # If slippage is moderate (1-2%), reduce position size
+            reduction_factor = self.slippage_calculator.acceptable_slippage_pct / slippage_estimate.expected_slippage_pct
+            logger.info(f"Reducing position size by {(1-reduction_factor)*100:.1f}% due to slippage")
+
+            position.size_usd *= reduction_factor
+            position.notional_usd = position.size_usd * position.leverage
+
+        logger.info(f"✓ Slippage check passed: expected={slippage_estimate.expected_slippage_pct:.3f}%")
 
         # Step 4: Risk Checks
         logger.info("Step 4: Risk Limits Check...")
@@ -697,6 +866,58 @@ class SignalProcessor:
         logger.info("="*70)
 
         return position
+
+    def process_queued_signals(self) -> List[Position]:
+        """
+        Process signals that were queued due to exchange downtime.
+
+        This should be called periodically (e.g., every 30 seconds) to retry
+        queued signals when the exchange becomes available again.
+
+        Returns:
+            List of positions that were successfully processed
+        """
+        # Clean up expired signals first
+        self.signal_queue.cleanup_expired()
+
+        # Get signals ready for retry
+        retryable = self.signal_queue.get_retryable_signals()
+
+        if not retryable:
+            return []
+
+        logger.info(f"\n{'='*70}")
+        logger.info(f"Processing {len(retryable)} queued signals")
+        logger.info(f"{'='*70}")
+
+        processed_positions = []
+
+        for queued_signal in retryable:
+            logger.info(f"\nRetrying queued signal (attempt {queued_signal.retry_count + 1})...")
+
+            try:
+                # Try to process the signal
+                position = self._process_signal_internal(queued_signal.signal)
+
+                if position:
+                    # Success - remove from queue
+                    self.signal_queue.queue.remove(queued_signal)
+                    processed_positions.append(position)
+                    logger.info(f"✓ Queued signal processed successfully")
+                else:
+                    # Signal was rejected - mark retry and keep in queue
+                    self.signal_queue.mark_retry(queued_signal)
+                    logger.info(f"Signal rejected, will retry if not expired")
+
+            except Exception as e:
+                # Still failing - mark retry
+                logger.warning(f"Retry failed: {e}")
+                self.signal_queue.mark_retry(queued_signal)
+
+        logger.info(f"\nProcessed {len(processed_positions)} queued signals successfully")
+        logger.info(f"Remaining in queue: {len(self.signal_queue.queue)}")
+
+        return processed_positions
 
     def _calculate_position(
         self,
@@ -742,8 +963,35 @@ class SignalProcessor:
         size_usd = max(size_usd, token_mapping.min_position_usd)
         size_usd = min(size_usd, self.total_capital_usd * 0.05)  # Cap at 5% of capital
 
-        # Step 4: Calculate leverage (capped)
-        leverage = min(signal.leverage, self.max_leverage, token_mapping.max_leverage)
+        # Step 4: Calculate leverage with extreme leverage capping
+        original_leverage = signal.leverage
+
+        # First apply basic cap from config
+        leverage = min(original_leverage, self.max_leverage, token_mapping.max_leverage)
+
+        # Check for extreme leverage and cap if needed
+        capped_leverage, was_capped = cap_extreme_leverage(
+            trader_leverage=original_leverage,
+            max_leverage=self.max_leverage
+        )
+
+        # If leverage was capped significantly, adjust position size to maintain risk profile
+        if was_capped and original_leverage > capped_leverage * 2:
+            # Extreme leverage detected (>50x when we cap at 25x)
+            logger.warning(
+                f"Extreme leverage detected: trader using {original_leverage}x, "
+                f"we're capping at {capped_leverage}x and adjusting position size"
+            )
+
+            # Adjust position size proportionally to maintain similar risk exposure
+            size_usd = adjust_position_for_leverage_cap(
+                position_size=size_usd,
+                original_leverage=original_leverage,
+                capped_leverage=capped_leverage
+            )
+
+            leverage = capped_leverage
+
         notional_usd = size_usd * leverage
 
         # Step 5: Calculate stop loss
@@ -806,6 +1054,83 @@ class SignalProcessor:
 
         return position
 
+    def _create_position_from_aggregated(
+        self,
+        aggregated: AggregatedSignal,
+        token_mapping: TokenMapping
+    ) -> Position:
+        """
+        Create Position object from AggregatedSignal.
+
+        Args:
+            aggregated: Aggregated signal with combined sizing
+            token_mapping: Token mapping for the pair
+
+        Returns:
+            Position ready for execution
+        """
+        # Calculate stop loss (use weighted average of contributions)
+        stop_loss_usd = sum(
+            contribution for contribution in aggregated.wallet_contributions.values()
+        )
+
+        # Create position
+        position = Position(
+            signal_id=aggregated.id,
+            wallet_address=','.join(aggregated.source_wallets),  # Multiple wallets
+            created_at=datetime.now(),
+
+            # Trading parameters
+            exchange=token_mapping.exchange,
+            pair=aggregated.pair,
+            side=aggregated.side,
+
+            # Position sizing (from aggregation)
+            size_usd=aggregated.aggregated_size_usd,
+            size_base=0.0,  # Will be calculated after entry price known
+            leverage=aggregated.avg_leverage,
+            notional_usd=aggregated.aggregated_size_usd * aggregated.avg_leverage,
+
+            # Risk management
+            stop_loss_price=0.0,  # Will be calculated after entry price known
+            stop_loss_usd=stop_loss_usd,
+            take_profit_price=None,
+
+            # Allocation details (averaged)
+            wallet_allocation_pct=0.0,  # N/A for aggregated
+            trade_multiplier=self.trade_multiplier,
+            trader_position_pct=0.0,  # N/A for aggregated
+            capital_at_risk_pct=(stop_loss_usd / self.total_capital_usd) * 100,
+
+            # Source trade info (from first signal)
+            source_token=aggregated.source_signals[0] if aggregated.source_signals else "",
+            source_token_symbol=token_mapping.dex_symbol,
+            source_amount_usd=aggregated.aggregated_size_usd,
+            source_leverage=aggregated.avg_leverage,
+
+            # Execution details
+            entry_price=0.0,
+            slippage_tolerance=0.5,
+
+            # Status
+            status='pending',
+
+            # Aggregation tracking
+            source_signals=json.dumps(aggregated.source_signals),
+            source_wallets=json.dumps(aggregated.source_wallets),
+            aggregation_count=aggregated.aggregation_count,
+            aggregation_multiplier=aggregated.aggregation_multiplier,
+            wallet_contributions=json.dumps(aggregated.wallet_contributions)
+        )
+
+        logger.info(f"  Aggregated from {aggregated.aggregation_count} signals")
+        logger.info(f"  Total size: ${aggregated.aggregated_size_usd:.2f}")
+        logger.info(f"  Average leverage: {aggregated.avg_leverage}x")
+        logger.info(f"  Notional: ${position.notional_usd:.2f}")
+        logger.info(f"  Stop loss: ${stop_loss_usd:.2f}")
+
+        return position
+
     def _get_wallet_allocation(self, wallet_address: str) -> float:
         """
         Get portfolio allocation for wallet based on rank.
@@ -852,55 +1177,37 @@ class SignalProcessor:
 
     def _estimate_trader_balance(self, wallet_address: str) -> float:
         """
-        Estimate trader's total balance based on historical activity.
+        Estimate trader's total balance using enhanced WalletBalanceEstimator.
 
-        Strategy:
-            1. Query historical trades from database
-            2. Find largest single trade
-            3. Assume largest trade = ~20% of capital
-            4. Estimate: balance = largest_trade / 0.20
+        Uses multiple estimation methods with confidence scoring:
+            1. Volume average (30-day rolling)
+            2. Largest trade method
+            3. Transaction count method
+            4. Rank-based fallback
 
-        Fallback: Use rank-based estimates
-            Rank 1-3: $5M
-            Rank 4-10: $2M
-            Rank 11-20: $1M
+        Returns:
+            float: Estimated balance in USD
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        balance_estimate = self.balance_estimator.estimate(wallet_address)
 
-        # Get largest trade
-        cursor.execute("""
-            SELECT MAX(amount_usd)
-            FROM wallet_transactions
-            WHERE wallet_id = (SELECT id FROM wallets WHERE address = ?)
-        """, (wallet_address.lower(),))
-
-        row = cursor.fetchone()
-
-        if row and row[0]:
-            largest_trade = row[0]
-            estimated_balance = largest_trade / 0.20
-            conn.close()
-            return estimated_balance
-
-        # Fallback: rank-based estimate
-        cursor.execute("""
-            SELECT rank FROM wallets WHERE address = ?
-        """, (wallet_address.lower(),))
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            rank = row[0]
-            if rank <= 3:
-                return 5_000_000
-            elif rank <= 10:
-                return 2_000_000
+        if balance_estimate:
+            # Log confidence level for monitoring
+            if balance_estimate.confidence == 'low':
+                logger.warning(
+                    f"Balance estimate for {wallet_address[:10]}... has low confidence "
+                    f"(method: {balance_estimate.method}, {balance_estimate.data_points} data points)"
+                )
             else:
-                return 1_000_000
+                logger.debug(
+                    f"Balance estimated: ${balance_estimate.estimated_balance:,.0f} "
+                    f"(confidence: {balance_estimate.confidence}, method: {balance_estimate.method})"
+                )
 
-        return 1_000_000  # Default
+            return balance_estimate.estimated_balance
+
+        # Absolute fallback if estimator fails
+        logger.warning(f"Balance estimation failed for {wallet_address[:10]}..., using default")
+        return 1_000_000
 
     def _reject_signal(self, signal, reason: str) -> None:
         """Record rejected signal with reason."""
