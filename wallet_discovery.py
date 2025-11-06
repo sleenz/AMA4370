@@ -669,11 +669,11 @@ def apply_filters(wallet_metrics: WalletMetrics) -> bool:
     """
     Apply filtering criteria to wallet metrics.
 
-    Filter criteria:
-        - total_trades >= 50
-        - total_volume_usd >= 50000
+    Filter criteria (RELAXED):
+        - total_trades >= 30 (was 50)
+        - total_volume_usd >= 10000 (was 50000)
         - is_contract == False
-        - days_since_last_activity <= 7
+        - days_since_last_activity <= 14 (was 7)
 
     Args:
         wallet_metrics: Wallet metrics from fetch_wallet_metrics()
@@ -685,15 +685,15 @@ def apply_filters(wallet_metrics: WalletMetrics) -> bool:
         logger.debug(f"Filter failed: {wallet_metrics.address[:10]}... is contract")
         return False
 
-    if wallet_metrics.total_trades < 50:
+    if wallet_metrics.total_trades < 30:
         logger.debug(f"Filter failed: {wallet_metrics.address[:10]}... only {wallet_metrics.total_trades} trades")
         return False
 
-    if wallet_metrics.total_volume_usd < 50000:
+    if wallet_metrics.total_volume_usd < 10000:
         logger.debug(f"Filter failed: {wallet_metrics.address[:10]}... only ${wallet_metrics.total_volume_usd:.2f} volume")
         return False
 
-    if wallet_metrics.days_since_last_activity > 7:
+    if wallet_metrics.days_since_last_activity > 14:
         logger.debug(f"Filter failed: {wallet_metrics.address[:10]}... last active {wallet_metrics.days_since_last_activity} days ago")
         return False
 

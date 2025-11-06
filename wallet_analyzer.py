@@ -16,10 +16,10 @@ Ranking Formula:
     Score = (Win_Rate × 0.25) + (Sharpe × 0.20) + (Profit_Factor × 0.20) +
             ((1 - Max_Drawdown) × 0.15) + (Consistency × 0.20)
 
-Filter Criteria:
-    - Win Rate > 55%
-    - Max Drawdown < 30%
-    - Minimum 50 closed trades
+Filter Criteria (RELAXED):
+    - Win Rate > 45% (was 55%)
+    - Max Drawdown < 40% (was 30%)
+    - Minimum 30 closed trades (was 50)
 
 Capital Allocation:
     - Top 5 wallets: 10% each
@@ -134,29 +134,29 @@ class PerformanceMetrics:
         """
         Check if wallet meets minimum criteria.
 
-        Filters:
-            - Win rate > 55%
-            - Max drawdown < 30%
-            - Minimum 50 closed trades
+        Filters (RELAXED):
+            - Win rate > 45% (was 55%)
+            - Max drawdown < 40% (was 30%)
+            - Minimum 30 closed trades (was 50)
 
         Returns:
             bool: True if passes all filters
         """
-        if self.total_closed_trades < 50:
+        if self.total_closed_trades < 30:
             logger.debug(
-                f"{self.address[:10]}...: Only {self.total_closed_trades} trades (need 50)"
+                f"{self.address[:10]}...: Only {self.total_closed_trades} trades (need 30)"
             )
             return False
 
-        if self.win_rate <= 55.0:
+        if self.win_rate <= 45.0:
             logger.debug(
-                f"{self.address[:10]}...: Win rate {self.win_rate:.1f}% (need >55%)"
+                f"{self.address[:10]}...: Win rate {self.win_rate:.1f}% (need >45%)"
             )
             return False
 
-        if self.max_drawdown >= 0.30:
+        if self.max_drawdown >= 0.40:
             logger.debug(
-                f"{self.address[:10]}...: Drawdown {self.max_drawdown*100:.1f}% (need <30%)"
+                f"{self.address[:10]}...: Drawdown {self.max_drawdown*100:.1f}% (need <40%)"
             )
             return False
 
