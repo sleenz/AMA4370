@@ -18,7 +18,7 @@ def load_api_keys():
     config_path = Path("config/api_keys.json")
 
     if not config_path.exists():
-        print("❌ Config file not found: config/api_keys.json")
+        print("Config file not found: config/api_keys.json")
         return None
 
     try:
@@ -26,7 +26,7 @@ def load_api_keys():
             config = json.load(f)
         return config
     except Exception as e:
-        print(f"❌ Error loading config: {e}")
+        print(f"Error loading config: {e}")
         return None
 
 
@@ -40,7 +40,7 @@ def test_etherscan_api():
     api_key = config.get('etherscan_api_key', '')
 
     if not api_key or api_key == 'YOUR_ETHERSCAN_API_KEY_HERE':
-        print("❌ ETHERSCAN_API_KEY not configured in config/api_keys.json")
+        print("ETHERSCAN_API_KEY not configured in config/api_keys.json")
         return False
 
     print(f"✓ API Key found: {api_key[:8]}...")
@@ -61,7 +61,7 @@ def test_etherscan_api():
         if data.get('status') == '0':
             error_msg = data.get('message', 'Unknown')
             error_result = data.get('result', 'Unknown')
-            print(f"❌ API Error: {error_msg} - {error_result}")
+            print(f"API Error: {error_msg} - {error_result}")
 
             if 'Invalid API Key' in str(error_result):
                 print("   → API key is invalid or not activated")
@@ -72,7 +72,7 @@ def test_etherscan_api():
 
         if data.get('status') == '1':
             txs = data.get('result', [])
-            print(f"✅ API Working! Found {len(txs)} transactions")
+            print(f"API Working! Found {len(txs)} transactions")
             if txs:
                 print(f"\nSample transaction:")
                 tx = txs[0]
@@ -83,7 +83,7 @@ def test_etherscan_api():
             return True
 
     except Exception as e:
-        print(f"❌ Error calling API: {e}")
+        print(f"Error calling API: {e}")
         return False
 
     return False
@@ -99,7 +99,7 @@ def test_bscscan_api():
     api_key = config.get('bscscan_api_key', '')
 
     if not api_key or api_key == 'YOUR_BSCSCAN_API_KEY_HERE':
-        print("⚠️  BSCSCAN_API_KEY not configured in config/api_keys.json")
+        print("BSCSCAN_API_KEY not configured in config/api_keys.json")
         print("   → Skipping BSC test (will use Ethereum only)")
         return False
 
@@ -121,16 +121,16 @@ def test_bscscan_api():
         if data.get('status') == '0':
             error_msg = data.get('message', 'Unknown')
             error_result = data.get('result', 'Unknown')
-            print(f"❌ API Error: {error_msg} - {error_result}")
+            print(f"API Error: {error_msg} - {error_result}")
             return False
 
         if data.get('status') == '1':
             txs = data.get('result', [])
-            print(f"✅ API Working! Found {len(txs)} transactions")
+            print(f"API Working! Found {len(txs)} transactions")
             return True
 
     except Exception as e:
-        print(f"❌ Error calling API: {e}")
+        print(f"Error calling API: {e}")
         return False
 
     return False
@@ -157,13 +157,13 @@ def test_wallet_discovery_flow():
 
         if data.get('result'):
             current_block = int(data.get('result'), 16)
-            print(f"✅ Current block: {current_block:,}")
+            print(f"Current block: {current_block:,}")
         else:
-            print(f"❌ Could not get current block")
+            print(f"Could not get current block")
             return False
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return False
 
     # Test 2: Get a recent block with transactions
@@ -180,7 +180,7 @@ def test_wallet_discovery_flow():
         transactions = block_data.get('transactions', [])
 
         if transactions:
-            print(f"✅ Block {test_block} has {len(transactions)} transactions")
+            print(f"Block {test_block} has {len(transactions)} transactions")
 
             # Extract unique addresses
             addresses = set()
@@ -197,11 +197,11 @@ def test_wallet_discovery_flow():
                 print(f"   Sample address: {sample_addr}")
                 return True
         else:
-            print(f"⚠️  Block {test_block} has no transactions")
+            print(f"Block {test_block} has no transactions")
             return False
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return False
 
 
@@ -229,7 +229,7 @@ def test_known_wallet():
 
         if data.get('status') == '1':
             txs = data.get('result', [])
-            print(f"✅ Found {len(txs)} recent transactions")
+            print(f"Found {len(txs)} recent transactions")
 
             # Calculate metrics
             total_value = sum(int(tx.get('value', 0)) for tx in txs)
@@ -248,16 +248,16 @@ def test_known_wallet():
             estimated_usd = total_eth * 3000
 
             print(f"\n   Filter Check:")
-            print(f"   - Min trades (30): {'✅ PASS' if len(txs) >= min_trades else '❌ FAIL'} ({len(txs)} trades)")
-            print(f"   - Min volume ($10k): {'✅ PASS' if estimated_usd >= min_volume else '❌ FAIL'} (${estimated_usd:,.0f})")
+            print(f"   - Min trades (30): {'PASS' if len(txs) >= min_trades else 'FAIL'} ({len(txs)} trades)")
+            print(f"   - Min volume ($10k): {'PASS' if estimated_usd >= min_volume else 'FAIL'} (${estimated_usd:,.0f})")
 
             return True
         else:
-            print(f"❌ Could not fetch wallet data")
+            print(f"Could not fetch wallet data")
             return False
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return False
 
 
@@ -298,7 +298,7 @@ if __name__ == "__main__":
     print("="*70)
 
     for test_name, passed in results.items():
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "PASS" if passed else "FAIL"
         print(f"{test_name:.<50} {status}")
 
     passed_count = sum(1 for v in results.values() if v)
@@ -307,17 +307,17 @@ if __name__ == "__main__":
     print(f"\nTotal: {passed_count}/{total_count} tests passed")
 
     if results.get('etherscan') and results.get('discovery_flow'):
-        print("\n✅ APIs are working! The issue is likely with filter criteria.")
+        print("\n APIs are working! The issue is likely with filter criteria.")
         print("\nRECOMMENDATION:")
         print("1. Filters may be too strict (run debug_wallet_discovery.py)")
         print("2. BSCScan key not configured (only Ethereum will work)")
     elif not results.get('etherscan'):
-        print("\n❌ Etherscan API is not working!")
+        print("\n Etherscan API is not working!")
         print("\nRECOMMENDATION:")
         print("1. Check API key in config/api_keys.json")
         print("2. Verify key is activated at etherscan.io")
         print("3. Check network connectivity")
     else:
-        print("\n⚠️  Some tests failed - review errors above")
+        print("\n  Some tests failed - review errors above")
 
     print("="*70)
