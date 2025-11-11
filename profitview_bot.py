@@ -8,10 +8,9 @@ DEPLOYMENT INSTRUCTIONS:
 4. Configure WooLive connection with API: d8e4c5eb-d3b0-4f4f-a201-7c51e0444434
 5. Save and Start the bot
 6. Copy your webhook URLs from ProfitView dashboard
-
-NOTE: Link base class is provided by ProfitView environment - no import needed
 """
 
+from profitview import Link, http
 import time
 
 
@@ -28,7 +27,7 @@ class Trading(Link):
     """
     Wallet Copy Trading Execution Bot for ProfitView
 
-    Inherits from Link base class (provided by ProfitView environment)
+    Inherits from Link base class (provided by profitview module)
     Receives webhook calls and executes trades on WOO X (WooLive)
     """
 
@@ -41,11 +40,12 @@ class Trading(Link):
         self.log(f"🤖 Wallet Copy Bot initialized for {self.venue}")
         self.log(f"📝 Paper Trading Mode Active")
 
-    def execute_order(self, data):
+    @http.route
+    def post_execute_order(self, data):
         """
         Execute trade order from wallet copy system
 
-        Webhook endpoint: /execute_order
+        Webhook endpoint: POST /execute_order
 
         Expected payload:
         {
@@ -156,11 +156,12 @@ class Trading(Link):
                 'error': str(e)
             }
 
+    @http.route
     def get_positions(self, data):
         """
         Get open positions
 
-        Webhook endpoint: /get_positions
+        Webhook endpoint: GET /get_positions
         """
         try:
             venue = data.get('venue', self.venue)
@@ -181,11 +182,12 @@ class Trading(Link):
                 'positions': []
             }
 
+    @http.route
     def get_pnl(self, data):
         """
         Get P&L summary
 
-        Webhook endpoint: /get_pnl
+        Webhook endpoint: GET /get_pnl
         """
         try:
             venue = data.get('venue', self.venue)
@@ -212,11 +214,12 @@ class Trading(Link):
                 'totalPnl': 0
             }
 
+    @http.route
     def get_status(self, data):
         """
         Get bot status
 
-        Webhook endpoint: /get_status
+        Webhook endpoint: GET /get_status
         """
         return {
             'success': True,
@@ -226,7 +229,3 @@ class Trading(Link):
             'totalVolume': self.total_volume,
             'mode': 'paper_trade'
         }
-
-
-# Initialize the bot (required by ProfitView)
-bot = Trading()
