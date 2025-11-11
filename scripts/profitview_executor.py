@@ -66,7 +66,9 @@ class ProfitViewExecutor:
             self._confirm_live_mode()
 
         # Setup
-        self.base_url = self.config['endpoints'][f'{self.mode}_trade']
+        # Map mode to endpoint key: paper_trade -> paper_trade, live -> live_trade
+        endpoint_key = 'paper_trade' if self.mode == 'paper_trade' else 'live_trade'
+        self.base_url = self.config['endpoints'][endpoint_key]
         self.api_key = self.config['api_key']
 
         # Rate limiter
