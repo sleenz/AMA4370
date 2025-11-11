@@ -15,6 +15,8 @@ DEPLOYMENT INSTRUCTIONS:
 WEBHOOK SECRET: 517b3bcac35bc86e1bea1ec31101b9b583b34387
 """
 
+import time
+
 
 class Config:
     """Bot configuration"""
@@ -44,7 +46,6 @@ class WalletCopyBot:
         print(f"🤖 Wallet Copy Bot initialized for {self.venue}")
         print(f"📝 Paper Trading Mode Active")
 
-    @http.route
     def post_execute_order(self, data):
         """
         Execute trade order from wallet copy system
@@ -212,7 +213,6 @@ class WalletCopyBot:
                 'code': 'INTERNAL_ERROR'
             }
 
-    @http.route
     def get_positions(self, data):
         """
         Get open positions
@@ -247,7 +247,6 @@ class WalletCopyBot:
                 'positions': []
             }
 
-    @http.route
     def get_pnl(self, data):
         """
         Get P&L summary
@@ -300,7 +299,6 @@ class WalletCopyBot:
                 'unrealizedPnl': 0
             }
 
-    @http.route
     def get_status(self, data):
         """
         Get bot status
