@@ -1,0 +1,31 @@
+{
+  "mode": "paper_trade",
+  "api_key": "YOUR_PROFITVIEW_API_KEY_HERE",
+
+  "endpoints": {
+    "paper_trade": "https://profitview.net/api/v1/paper/webhook",
+    "live_trade": "https://profitview.net/api/v1/webhook",
+    "positions": "https://profitview.net/api/v1/positions",
+    "pnl": "https://profitview.net/api/v1/pnl"
+  },
+
+  "exchange_settings": {
+    "venue": "WooLive",
+    "exchange": "binance",
+    "account_type": "futures",
+    "default_leverage": 10,
+    "max_leverage": 25
+  },
+
+  "safety": {
+    "require_confirmation_for_live": true,
+    "max_order_size_usd": 10000,
+    "daily_loss_limit_usd": 5000,
+    "enable_audit_log": true
+  },
+
+  "rate_limiting": {
+    "requests_per_second": 10,
+    "burst_size": 20
+  }
+}
