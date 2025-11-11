@@ -3,6 +3,7 @@ requests>=2.31.0
 numpy>=1.24.0
 web3>=6.0.0
 eth-abi>=4.0.0
+python-binance>=1.0.19  # For Binance trade execution
 
 # Testing
 pytest>=7.4.0

@@ -1,6 +1,7 @@
 # API Keys and Secrets
 config/api_keys.json
 config/profitview_config.json
+config/binance_config.json
 
 # Python
 __pycache__/
