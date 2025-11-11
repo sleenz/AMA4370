@@ -332,8 +332,8 @@ class ProfitViewExecutor:
         for attempt in range(max_retries):
             try:
                 # Prepare headers
+                # Note: ProfitView webhook auth is in URL (webhook secret), not headers
                 headers = {
-                    'X-API-Key': self.api_key,
                     'Content-Type': 'application/json'
                 }
 
@@ -530,14 +530,9 @@ class ProfitViewExecutor:
         """
 
         try:
-            headers = {
-                'X-API-Key': self.api_key,
-                'Content-Type': 'application/json'
-            }
-
+            # ProfitView webhook auth is in URL, send venue as query param
             response = requests.get(
-                self.config['endpoints']['positions'],
-                headers=headers,
+                f"{self.config['endpoints']['positions']}?venue={self.config['exchange_settings']['venue']}",
                 timeout=10
             )
 
@@ -562,14 +557,9 @@ class ProfitViewExecutor:
         """
 
         try:
-            headers = {
-                'X-API-Key': self.api_key,
-                'Content-Type': 'application/json'
-            }
-
+            # ProfitView webhook auth is in URL, send venue as query param
             response = requests.get(
-                self.config['endpoints']['pnl'],
-                headers=headers,
+                f"{self.config['endpoints']['pnl']}?venue={self.config['exchange_settings']['venue']}",
                 timeout=10
             )
 
