@@ -1,325 +1,677 @@
-# Wallet Copy Trading System
+# Wallet Copy Trading Bot - Complete Guide
 
-A sophisticated system for discovering and tracking profitable cryptocurrency wallets on Ethereum and Binance Smart Chain (BSC) for automated copy trading.
+**What this does:** Monitors profitable Ethereum wallets and automatically copies their trades via ProfitView.
 
-## Project Status: Phase 1 - Discovery & Infrastructure
+---
 
-### Completed Components
+## Quick Start (After ProfitView Bot Deployment)
 
-#### Session 1.1: Database Schema ✅
-- **init_database.py** - SQLite schema for tracking wallets, transactions, orders, and positions
-- 4 tables with 14 strategic indexes
-- Foreign key constraints and data validation
-- Comprehensive docstrings
+You've already deployed `profitview_bot.py` to ProfitView. Now on your computer:
 
-#### Session 1.2: Wallet Discovery ✅
-- **wallet_discovery.py** - Discovery system for finding profitable wallets
-- **test_wallet_discovery.py** - Complete test suite with mocked APIs
-- Supports Ethereum and BSC via Etherscan/BSCScan APIs
-- Token bucket rate limiting (5 req/sec)
-- Exponential backoff retry logic
-- USD conversion for volumes
-
-#### Session 1.3: Wallet Analysis & Ranking ✅
-- **wallet_analyzer.py** - Performance metrics calculation and ranking system
-- **test_wallet_analyzer.py** - Comprehensive test suite for all algorithms
-- FIFO trade matching with gas fee accounting
-- 6 performance metrics: Win rate, Sharpe ratio, Max drawdown, Profit factor, Avg return, Consistency
-- Weighted ranking formula with capital allocation
-- Token filtering (Binance/Bitget tradeable only)
-- Database-priority updates
-
-## Features
-
-### Wallet Discovery
-- **Multi-chain support**: Ethereum and Binance Smart Chain
-- **Smart filtering criteria**:
-  - Minimum 50 trades in last 90 days
-  - Total volume > $50,000 USD
-  - Active within last 7 days
-  - Excludes smart contract addresses
-- **Recent blocks sampling strategy**: Analyzes last 7 days of blockchain activity
-- **Parallel processing**: ThreadPoolExecutor for concurrent API calls
-- **Rate limiting**: Token bucket algorithm prevents API throttling
-- **Robust error handling**: Exponential backoff, retries, graceful degradation
-
-### Database Schema
-- **wallets**: Performance metrics and ranking scores
-- **wallet_transactions**: Historical trade data for analysis
-- **our_orders**: Our executed trades (copy or manual)
-- **open_positions**: Real-time P&L tracking with average cost basis
-
-## Installation
-
-### Prerequisites
-- Python 3.9+
-- pip
-
-### Setup
-
-1. **Clone the repository**
 ```bash
-git clone <repo-url>
-cd AMA4370
-```
-
-2. **Install dependencies**
-```bash
+# 1. Install dependencies
 pip install -r requirements.txt
+
+# 2. Configure your API keys
+cp config/profitview_config.example.json config/profitview_config.json
+# (Already done - your keys are configured)
+
+# 3. Run the system
+python main.py --demo
 ```
 
-3. **Configure API keys**
+That's it! The bot will send a test order to your ProfitView bot.
 
-Copy the example config and add your API keys:
-```bash
-cp config/api_keys.json.example config/api_keys.json
+---
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│ YOUR COMPUTER (This Repository)                 │
+│                                                  │
+│  1. wallet_discovery.py                         │
+│     └─> Finds profitable wallets                │
+│                                                  │
+│  2. wallet_analyzer.py                          │
+│     └─> Monitors wallet transactions            │
+│                                                  │
+│  3. signal_processor.py                         │
+│     └─> Generates trading signals               │
+│                                                  │
+│  4. profitview_executor.py                      │
+│     └─> Sends orders to ProfitView (webhook)    │
+└─────────────────────────────────────────────────┘
+                    ↓ HTTP POST
+┌─────────────────────────────────────────────────┐
+│ PROFITVIEW SERVERS                               │
+│                                                  │
+│  profitview_bot.py (YOU DEPLOYED THIS)          │
+│  └─> Receives webhooks                          │
+│  └─> Executes trades on WOO X                   │
+└─────────────────────────────────────────────────┘
+                    ↓ Trade Execution
+┌─────────────────────────────────────────────────┐
+│ WOO X EXCHANGE (WooLive - Paper Trading)        │
+└─────────────────────────────────────────────────┘
 ```
 
-Edit `config/api_keys.json`:
+---
+
+## File Descriptions
+
+### Core Trading System
+
+**`wallet_discovery.py`** (300 lines)
+- Discovers profitable wallets by scanning Ethereum blocks
+- Filters wallets by: trade count, volume, recent activity
+- Exports to `discovered_wallets.csv`
+- **Run:** `python wallet_discovery.py`
+
+**`wallet_analyzer.py`** (400 lines)
+- Monitors wallet transactions in real-time
+- Analyzes DEX trades (Uniswap, PancakeSwap, etc.)
+- Calculates wallet performance metrics
+- **Run:** `python wallet_analyzer.py --wallet 0x123...`
+
+**`signal_processor.py`** (500 lines)
+- Processes wallet trades into actionable signals
+- Applies filters: minimum size, confidence score
+- Calculates position sizing and risk
+- Generates trading signals with entry/stop loss
+- **Run:** Used by main.py (not standalone)
+
+**`dex_parser.py`** (600 lines)
+- Decodes DEX smart contract transactions
+- Extracts: token pair, amount, price, direction
+- Supports: Uniswap V2/V3, PancakeSwap, SushiSwap
+- **Run:** Used by wallet_analyzer.py
+
+### Execution Engines
+
+**`scripts/profitview_executor.py`** (450 lines)
+- **RUNS ON YOUR COMPUTER**
+- Sends webhook requests TO your ProfitView bot
+- Handles retry logic, validation, logging
+- **Run:** `python scripts/profitview_executor.py` (test mode)
+
+**`profitview_bot.py`** (400 lines)
+- **RUNS ON PROFITVIEW SERVERS** (you deployed this)
+- Receives webhook requests FROM profitview_executor.py
+- Executes trades on WOO X via ProfitView
+- **Run:** Already deployed and running on ProfitView
+
+**`scripts/binance_executor.py`** (700 lines)
+- Alternative: Direct Binance API integration (free)
+- Use this if you want to skip ProfitView
+- Supports testnet (paper trading) and live trading
+- **Run:** `python scripts/binance_executor.py` (test mode)
+
+### Main Entry Point
+
+**`main.py`** (150 lines)
+- Main program entry point
+- Integrates all components
+- Demo mode: Shows how everything works together
+- **Run:** `python main.py --demo`
+
+### Database & Setup
+
+**`init_database.py`** (100 lines)
+- Creates database schema
+- Sets up tables: wallets, positions, orders
+- **Run:** `python init_database.py` (auto-runs on first use)
+
+**`update_database_schema.py`** (50 lines)
+- Updates database schema if needed
+- **Run:** Only if database structure changes
+
+### Testing & Utilities
+
+**`test_api_connectivity.py`** (100 lines)
+- Tests Etherscan API connection
+- Verifies API keys work
+- **Run:** `python test_api_connectivity.py`
+
+**`test_wallet_discovery.py`** (200 lines)
+- Unit tests for wallet discovery
+- **Run:** `pytest test_wallet_discovery.py`
+
+**`test_wallet_analyzer.py`** (150 lines)
+- Unit tests for wallet analyzer
+- **Run:** `pytest test_wallet_analyzer.py`
+
+**`test_signal_processor.py`** (100 lines)
+- Unit tests for signal processor
+- **Run:** `pytest test_signal_processor.py`
+
+**`tests/test_profitview_integration.py`** (300 lines)
+- Integration tests for ProfitView
+- Tests order execution, validation, error handling
+- **Run:** `python tests/test_profitview_integration.py`
+
+**`debug_wallet_discovery.py`** (250 lines)
+- Debug tool for wallet discovery
+- Scans small number of blocks for testing
+- **Run:** `python debug_wallet_discovery.py`
+
+**`setup_test_data.py`** (100 lines)
+- Creates test data for development
+- **Run:** `python setup_test_data.py`
+
+### Supporting Modules
+
+**`trade_monitor.py`** (200 lines)
+- Monitors ongoing trades
+- Tracks P&L
+- **Run:** Used by main.py
+
+**`edge_case_handlers.py`** (150 lines)
+- Handles edge cases in trade processing
+- **Run:** Used by signal_processor.py
+
+---
+
+## Configuration Files
+
+**`config/profitview_config.json`** (GITIGNORED - contains your keys)
 ```json
 {
-  "etherscan_api_key": "YOUR_ETHERSCAN_API_KEY",
-  "bscscan_api_key": "YOUR_BSCSCAN_API_KEY",
-  "rate_limit_per_second": 5,
-  "max_retries": 5,
-  "request_timeout": 30
+  "mode": "paper_trade",
+  "api_key": "517b3bcac35bc86e1bea1ec31101b9b583b34387",
+  "woolive_api_key": "d8e4c5eb-d3b0-4f4f-a201-7c51e0444434",
+  "endpoints": {
+    "paper_trade": "https://profitview.net/trading/bot/517b3bcac35bc86e1bea1ec31101b9b583b34387/execute_order",
+    ...
+  }
 }
 ```
 
-**Get API Keys:**
-- Etherscan: https://etherscan.io/myapikey
-- BSCScan: https://bscscan.com/myapikey
+**`config/profitview_config.example.json`**
+- Template for team members (no real keys)
 
-4. **Initialize database**
-```bash
-python init_database.py
+**`config/binance_config.json`** (GITIGNORED)
+- Binance API configuration (if using Binance instead)
+
+**`config/binance_config.example.json`**
+- Template for Binance setup
+
+**`config/api_keys.json`** (GITIGNORED)
+```json
+{
+  "etherscan_api_key": "YOUR_KEY",
+  "bscscan_api_key": "YOUR_KEY"
+}
 ```
 
-## Usage
+**`config/config.json`**
+- General system configuration
+- Trading parameters, filters, risk management
 
-### Discover Profitable Wallets
+---
 
-Run the wallet discovery system:
+## How to Run the System
+
+### Option 1: Demo Mode (Test Everything)
+
+```bash
+python main.py --demo
+```
+
+**What it does:**
+- Creates a test trading signal
+- Sends it to your ProfitView bot
+- Executes a test order on WooLive (paper trading)
+- Shows results
+
+**Expected output:**
+```
+📊 Demo Trading Signal:
+   Pair: BTC/USDT
+   Side: BUY
+   Size: $100.00
+
+🚀 Executing trade via ProfitView...
+📤 Sending order to ProfitView...
+✅ Order executed successfully
+   Order ID: WCT_1_1699876543210
+```
+
+### Option 2: Discovery Mode (Find Wallets)
+
 ```bash
 python wallet_discovery.py
 ```
 
+**What it does:**
+- Scans Ethereum blockchain for active traders
+- Finds wallets with high volume and trade count
+- Exports to `discovered_wallets.csv`
+- Takes 10-15 minutes
+
 **Output:**
-- `discovered_wallets.csv` - Filtered list of ~100 profitable wallets
+- `discovered_wallets.csv` with profitable wallets
 
-**Expected Runtime:**
-- ~20-30 minutes (2000 addresses scanned across both chains)
-- Progress logged every wallet (DEBUG level)
-
-### Run Tests
+### Option 3: Monitor Mode (Watch Wallet)
 
 ```bash
-pytest test_wallet_discovery.py -v
+python wallet_analyzer.py --wallet 0x28c6c06298d514db089934071355e5743bf21d60
 ```
 
-**Test Coverage:**
-- Configuration loading (file, env vars, errors)
-- Rate limiting (token bucket algorithm)
-- Exponential backoff on failures
-- Transaction parsing and filtering
-- Contract address detection
-- Wallet metrics calculation
-- Filter logic
-- CSV export
+**What it does:**
+- Monitors specific wallet in real-time
+- Analyzes each transaction
+- Identifies DEX trades
+- Generates signals when wallet trades
 
-## Architecture
+### Option 4: Full Production Mode
 
-### Wallet Discovery Pipeline
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  1. Load Config        (API keys from JSON/env)        │
-├─────────────────────────────────────────────────────────┤
-│  2. Initialize Clients (Etherscan, BSCScan)            │
-├─────────────────────────────────────────────────────────┤
-│  3. Discover Traders   (Sample recent blocks)          │
-│     - Ethereum: ~1000 candidates                        │
-│     - BSC: ~1000 candidates                             │
-├─────────────────────────────────────────────────────────┤
-│  4. Fetch Metrics      (90 days transaction history)   │
-│     - Total trades                                      │
-│     - Volume in USD                                     │
-│     - Last activity                                     │
-│     - Contract check                                    │
-├─────────────────────────────────────────────────────────┤
-│  5. Apply Filters      (Trades, volume, activity)      │
-├─────────────────────────────────────────────────────────┤
-│  6. Export CSV         (discovered_wallets.csv)        │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Rate Limiting: Token Bucket Algorithm
-
-```python
-- Bucket capacity: 5 tokens
-- Refill rate: 5 tokens/second
-- Each API call consumes 1 token
-- Allows bursts up to capacity
-- Blocks when bucket empty
-```
-
-### Exponential Backoff
-
-```
-Retry attempts: 2s → 4s → 8s → 16s → 32s (max)
-```
-
-## File Structure
-
-```
-AMA4370/
-├── config/
-│   ├── api_keys.json.example    # Template for API keys
-│   └── api_keys.json            # Your actual keys (gitignored)
-├── init_database.py             # Database schema initialization
-├── wallet_discovery.py          # Main discovery system
-├── test_wallet_discovery.py     # Test suite
-├── discovered_wallets.csv       # Output (generated)
-├── wallet_trading.db            # SQLite database (generated)
-├── .gitignore                   # Git ignore rules
-├── README.md                    # This file
-└── requirements.txt             # Python dependencies
-```
-
-## Configuration
-
-### API Rate Limits
-
-**Default settings** (adjust in `config/api_keys.json`):
-- `rate_limit_per_second`: 5 (free tier limit)
-- `max_retries`: 5
-- `request_timeout`: 30 seconds
-
-**Etherscan/BSCScan Free Tier:**
-- 5 calls/second
-- 100,000 calls/day
-
-### Filter Criteria
-
-**Hardcoded in wallet_discovery.py** (modify `apply_filters()` function):
-```python
-MIN_TRADES = 50              # Minimum trades in 90 days
-MIN_VOLUME_USD = 50000       # Minimum $50k volume
-MAX_DAYS_INACTIVE = 7        # Active within 7 days
-EXCLUDE_CONTRACTS = True     # Skip smart contracts
-```
-
-## Database Schema
-
-### Tables
-
-1. **wallets** - Wallet performance and ranking
-   - address, rank_score, total_trades, win_rate, sharpe_ratio, etc.
-
-2. **wallet_transactions** - Historical trades
-   - tx_hash, timestamp, action (BUY/SELL), token, amount, price_usd
-
-3. **our_orders** - Our executed trades
-   - Links to copied wallet, execution details, status tracking
-
-4. **open_positions** - Current holdings
-   - token, amount, avg_entry_price, current_price, unrealized_pnl
-
-## Development Roadmap
-
-### Phase 1: Infrastructure ✅
-- [x] Database schema design
-- [x] Wallet discovery system
-- [x] Test suite with 95%+ coverage
-
-### Phase 2: Analysis (Next)
-- [ ] Wallet ranking algorithms
-- [ ] Performance metric calculations
-- [ ] Sharpe ratio, win rate, max drawdown
-
-### Phase 3: Trading
-- [ ] Real-time transaction monitoring
-- [ ] Order execution system
-- [ ] Position management
-- [ ] P&L tracking
-
-### Phase 4: Optimization
-- [ ] Strategy backtesting
-- [ ] Risk management
-- [ ] Portfolio allocation
-- [ ] Performance dashboard
-
-## Troubleshooting
-
-### "Missing required API keys"
-**Solution:** Create `config/api_keys.json` or set environment variables:
 ```bash
-export ETHERSCAN_API_KEY="your_key"
-export BSCSCAN_API_KEY="your_key"
+# 1. Discover wallets
+python wallet_discovery.py
+
+# 2. Load wallets into database
+python init_database.py
+
+# 3. Run the main loop (monitors all wallets)
+python main.py
 ```
 
-### "Max rate limit reached"
-**Solution:**
-- Wait 60 seconds and retry
-- Upgrade to paid Etherscan/BSCScan plan
-- Reduce `rate_limit_per_second` in config
-
-### "No wallets discovered"
-**Solution:**
-- Check API keys are valid
-- Verify network connectivity
-- Lower filter thresholds (MIN_TRADES, MIN_VOLUME_USD)
-
-### Tests failing
-**Solution:**
-```bash
-pip install pytest pytest-mock requests
-pytest test_wallet_discovery.py -v
-```
-
-## Performance Notes
-
-### Expected Discovery Results
-
-```
-Total addresses scanned: 2000 (1000 ETH + 1000 BSC)
-Wallets passing filters: ~50-100
-
-Filter pass rates:
-- Minimum trades (≥50): ~45%
-- Volume threshold (≥$50k): ~23%
-- Active last 7 days: ~68%
-- Not contract: ~89%
-- All filters combined: ~4-5%
-```
-
-### Runtime Optimization
-
-**Current:** Sequential chain processing (Ethereum → BSC)
-**Improvement:** Parallel chain processing (future enhancement)
-
-## Contributing
-
-This is a personal project. For issues or questions:
-1. Check existing documentation
-2. Review test cases for usage examples
-3. Examine code comments and docstrings
-
-## Security
-
-⚠️ **IMPORTANT:**
-- Never commit `config/api_keys.json` to git
-- Keep API keys confidential
-- The `.gitignore` file protects sensitive data
-- Use environment variables in production
-
-## License
-
-Private project - All rights reserved
+**What it does:**
+- Monitors all discovered wallets continuously
+- Generates signals when they trade
+- Executes trades via ProfitView
+- Logs everything to database
 
 ---
 
-**Project:** AMA4370 - Wallet Copy Trading System
-**Phase:** 1 - Discovery & Infrastructure
-**Status:** Active Development
-**Last Updated:** 2025-11-06
+## What You Need to Do NOW
+
+Since you've deployed the ProfitView bot, here's what to do on your computer:
+
+### Step 1: Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+**Installs:**
+- requests (HTTP requests)
+- web3 (Ethereum blockchain)
+- eth-abi (Decode transactions)
+- python-binance (optional, if using Binance)
+
+### Step 2: Verify Configuration
+
+Your keys are already configured in `config/profitview_config.json`. To verify:
+
+```bash
+# Check config exists
+ls -la config/profitview_config.json
+
+# Should NOT be in git (for security)
+git status config/profitview_config.json
+# Should say: "nothing to commit"
+```
+
+### Step 3: Test ProfitView Connection
+
+```bash
+python scripts/profitview_executor.py
+```
+
+**Expected output:**
+```
+📝 PAPER TRADING MODE ACTIVE
+════════════════════════════════════════════════════════════
+• All orders are simulated
+• View results in ProfitView dashboard
+• No real money at risk
+
+🧪 Testing ProfitView Connection...
+
+📋 Test 1: Query open positions
+📊 Retrieved 0 open positions from ProfitView
+
+📋 Test 2: Query P&L
+💰 P&L Summary:
+   Total P&L: $0.00
+
+📋 Test 3: Send test order (paper trading)
+────────────────────────────────────────────────────────────
+📤 Sending order to ProfitView (attempt 1/3)
+   Mode: PAPER_TRADE
+   Symbol: BTCUSDT
+   Side: BUY
+   Quantity: 0.002
+   Leverage: 1x
+✅ Order executed successfully
+   Order ID: WCT_999_1699876543210
+   Exchange Order ID: 12345678
+
+✅ Connection test complete!
+```
+
+**If you see errors:**
+- Check ProfitView bot is "Running" (status should be green)
+- Check bot logs in ProfitView dashboard
+- Verify WooLive connection is active
+- Ensure webhook URLs match
+
+### Step 4: Run Demo Mode
+
+```bash
+python main.py --demo
+```
+
+This shows how the full system works:
+1. Creates a trading signal (simulated wallet trade)
+2. Sends to ProfitView
+3. Executes order
+4. Shows results
+
+### Step 5: Check Results
+
+**In ProfitView:**
+1. Open ProfitView dashboard
+2. Check bot logs (should show "Order executed")
+3. View WooLive positions (test order should appear)
+
+**On your computer:**
+```bash
+# Check database
+sqlite3 database/wallets.db "SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 5;"
+```
+
+---
+
+## Running the Full Algorithm
+
+To run the complete wallet copy trading algorithm:
+
+### Step 1: Discover Profitable Wallets
+
+```bash
+python wallet_discovery.py
+```
+
+- Takes 10-15 minutes
+- Outputs: `discovered_wallets.csv`
+- Finds ~10-50 wallets
+
+### Step 2: Import Wallets to Database
+
+```bash
+python init_database.py
+```
+
+- Creates database if needed
+- Imports wallets from CSV
+
+### Step 3: Start Monitoring
+
+```bash
+python main.py
+```
+
+**This will:**
+1. Load wallets from database
+2. Monitor their transactions continuously
+3. Analyze each trade
+4. Generate signals when they match criteria
+5. Send orders to ProfitView
+6. ProfitView executes on WooLive
+7. Log everything to database
+
+**To stop:** Press Ctrl+C
+
+### Step 4: Monitor Performance
+
+**Check bot status:**
+```bash
+# ProfitView dashboard
+# → Bot logs
+# → WooLive positions
+# → P&L tracking
+```
+
+**Check local database:**
+```bash
+sqlite3 database/wallets.db
+
+# Recent orders
+SELECT pair, side, size_usd, status FROM orders ORDER BY submitted_at DESC LIMIT 10;
+
+# Success rate
+SELECT status, COUNT(*) FROM orders GROUP BY status;
+
+# Total volume
+SELECT SUM(size_usd) FROM orders WHERE status='FILLED';
+```
+
+---
+
+## Workflow Summary
+
+```
+┌──────────────────────────────────────────────┐
+│ 1. DISCOVER WALLETS                          │
+│    python wallet_discovery.py                │
+│    → discovered_wallets.csv                  │
+└──────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────┐
+│ 2. IMPORT TO DATABASE                        │
+│    python init_database.py                   │
+│    → database/wallets.db                     │
+└──────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────┐
+│ 3. MONITOR & EXECUTE                         │
+│    python main.py                            │
+│    → Watches wallets                         │
+│    → Generates signals                       │
+│    → Sends to ProfitView                     │
+└──────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────┐
+│ PROFITVIEW BOT (you deployed)                │
+│    Receives webhooks                         │
+│    → Executes on WooLive                     │
+└──────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────┐
+│ WOO X WOOLIVE (Paper Trading)                │
+│    Orders executed                           │
+│    → P&L tracked                             │
+└──────────────────────────────────────────────┘
+```
+
+---
+
+## Troubleshooting
+
+### Issue: "Module not found"
+
+```bash
+pip install -r requirements.txt
+```
+
+### Issue: "Configuration file not found"
+
+Your config is already set up. If missing:
+```bash
+cp config/profitview_config.example.json config/profitview_config.json
+# Then add your keys
+```
+
+### Issue: "Order rejected - HTTP 403"
+
+**Check:**
+1. Is ProfitView bot running? (status should be green)
+2. Is webhook secret correct? (`517b3bcac35bc86e1bea1ec31101b9b583b34387`)
+3. Is WooLive connected in ProfitView?
+
+**Fix:**
+1. Go to ProfitView dashboard
+2. Check bot status → restart if needed
+3. Check bot logs for errors
+4. Verify WooLive connection is active
+
+### Issue: "Database locked"
+
+```bash
+# Close any database connections
+pkill -f sqlite3
+# Or restart terminal
+```
+
+### Issue: "No wallets found"
+
+```bash
+# Run discovery again
+python wallet_discovery.py
+
+# Or use debug version (faster, 10 blocks only)
+python debug_wallet_discovery.py
+```
+
+---
+
+## Important Notes
+
+### Paper Trading
+
+**You're currently in PAPER TRADING mode:**
+- All orders go to WooLive (WOO X testnet)
+- No real money is used
+- Perfect for testing and learning
+- Can test for weeks/months safely
+
+### Switching to Live Trading
+
+⚠️ **WARNING: Only after extensive paper trading!**
+
+1. Test on paper trading for 1-2 weeks minimum
+2. Verify success rate > 50%
+3. Understand all risks
+4. Start with VERY SMALL positions
+5. Change config mode to "live"
+6. Use LIVE WOO X credentials (not WooLive)
+
+### Security
+
+**Your API keys are safe:**
+- `config/profitview_config.json` is gitignored
+- Never committed to GitHub
+- Only example configs are in repo
+
+### Performance
+
+**System requirements:**
+- Python 3.8+
+- 1GB RAM minimum
+- Stable internet connection
+- Can run on any computer, VPS, or cloud
+
+**Blockchain access:**
+- Uses Etherscan API (free tier: 5 req/sec)
+- Rate limiting built-in
+- Retries on failures
+
+---
+
+## Quick Command Reference
+
+```bash
+# Test ProfitView connection
+python scripts/profitview_executor.py
+
+# Run demo
+python main.py --demo
+
+# Discover wallets
+python wallet_discovery.py
+
+# Monitor specific wallet
+python wallet_analyzer.py --wallet 0x123...
+
+# Full system
+python main.py
+
+# Check database
+sqlite3 database/wallets.db "SELECT * FROM orders LIMIT 5;"
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest
+```
+
+---
+
+## Support & Resources
+
+**Configuration:**
+- ProfitView Webhook Secret: `517b3bcac35bc86e1bea1ec31101b9b583b34387`
+- WooLive Paper API: `d8e4c5eb-d3b0-4f4f-a201-7c51e0444434`
+- Webhook URL: `https://profitview.net/trading/bot/517b3bcac35bc86e1bea1ec31101b9b583b34387/execute_order`
+
+**ProfitView:**
+- Dashboard: https://profitview.net/trading
+- Your bot should be running there
+
+**WOO X:**
+- Paper Trading: WooLive (configured in your ProfitView bot)
+
+**Getting Help:**
+- Check ProfitView bot logs first
+- Check local terminal output
+- Check database: `sqlite3 database/wallets.db`
+
+---
+
+## Summary - What to Do Right Now
+
+1. ✅ **ProfitView bot deployed** (you did this)
+
+2. **On your computer:**
+   ```bash
+   # Install dependencies
+   pip install -r requirements.txt
+
+   # Test connection
+   python scripts/profitview_executor.py
+
+   # Run demo
+   python main.py --demo
+   ```
+
+3. **Check results:**
+   - ProfitView dashboard (bot logs, orders)
+   - WooLive account (positions)
+
+4. **Run the algorithm:**
+   ```bash
+   # Discover wallets
+   python wallet_discovery.py
+
+   # Start monitoring
+   python main.py
+   ```
+
+**That's it!** The system is now running and will automatically copy trades from profitable wallets.
+
+---
+
+## Next Steps
+
+After successful testing:
+- Let it run for 1-2 weeks on paper trading
+- Monitor performance daily
+- Analyze which wallets are most profitable
+- Refine filters and parameters
+- When ready, can switch to live (very carefully!)
+
+**Questions?** Check the troubleshooting section above or examine the ProfitView bot logs.
