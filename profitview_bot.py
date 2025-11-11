@@ -8,9 +8,10 @@ DEPLOYMENT INSTRUCTIONS:
 4. Configure WooLive connection with API: d8e4c5eb-d3b0-4f4f-a201-7c51e0444434
 5. Save and Start the bot
 6. Copy your webhook URLs from ProfitView dashboard
+
+NOTE: Link base class is provided by ProfitView environment - no import needed
 """
 
-from cloud import Link
 import time
 
 
@@ -27,7 +28,8 @@ class Trading(Link):
     """
     Wallet Copy Trading Execution Bot for ProfitView
 
-    This bot receives webhook calls and executes trades on WOO X (WooLive)
+    Inherits from Link base class (provided by ProfitView environment)
+    Receives webhook calls and executes trades on WOO X (WooLive)
     """
 
     def __init__(self):
@@ -226,5 +228,5 @@ class Trading(Link):
         }
 
 
-# Initialize the bot
+# Initialize the bot (required by ProfitView)
 bot = Trading()
