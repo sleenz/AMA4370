@@ -1,28 +1,7 @@
 {
-  "total_capital_usd": 100000,
-  "trade_multiplier": 0.5,
-  "max_leverage": 25,
-  "max_spread_pct": 0.5,
-  "min_depth_multiplier": 10,
-  "max_total_positions": 20,
-  "max_same_pair_positions": 3,
-  "max_position_pct": 5.0,
-  "max_total_risk_pct": 50.0,
-
-  "signal_aggregation": {
-    "time_window_seconds": 120,
-    "boost_per_signal": 0.3,
-    "max_multiplier": 2.0
-  },
-
-  "slippage": {
-    "acceptable_slippage_pct": 1.0,
-    "reject_slippage_pct": 2.0
-  },
-
-  "signal_queue": {
-    "max_queue_size": 20,
-    "signal_expiration_seconds": 300,
-    "max_retries": 3
-  }
+  "etherscan_api_key": "UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH",
+  "bscscan_api_key": "UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH",
+  "rate_limit_per_second": 5,
+  "max_retries": 5,
+  "request_timeout": 30
 }
