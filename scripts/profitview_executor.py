@@ -360,10 +360,58 @@ class ProfitViewExecutor:
                 except:
                     response_data = {'raw_response': response.text}
 
-                # Check success
+                # Check success - must check BOTH status code AND success field
                 if response.status_code == 200:
-                    # Successful response
+                    # Check if the response indicates success
+                    if response_data.get('success') == False:
+                        # Bot returned error in success response
+                        error_msg = response_data.get('error') or 'Unknown error from bot'
+                        print(f"❌ Order failed: {error_msg}")
+
+                        if attempt < max_retries - 1:
+                            sleep_time = backoff_delays[attempt]
+                            print(f"   Retrying in {sleep_time} seconds...")
+                            time.sleep(sleep_time)
+                            continue
+                        else:
+                            return OrderResult(
+                                success=False,
+                                order_id=order_id,
+                                exchange_order_id=None,
+                                status='FAILED',
+                                filled_price=None,
+                                filled_quantity=None,
+                                error_message=f"Max retries exceeded: {error_msg}",
+                                profitview_response=response_data
+                            )
+
+                    # Successful response - verify we have real data
                     exchange_order_id = response_data.get('exchangeOrderId') or response_data.get('orderId')
+                    filled_price = response_data.get('filledPrice')
+                    filled_quantity = response_data.get('filledQuantity')
+
+                    # Don't use fallback data - if missing, it's an error
+                    if not filled_price or not filled_quantity:
+                        error_msg = "Response missing order data (price or quantity)"
+                        print(f"❌ {error_msg}")
+                        print(f"   Response: {response_data}")
+
+                        if attempt < max_retries - 1:
+                            sleep_time = backoff_delays[attempt]
+                            print(f"   Retrying in {sleep_time} seconds...")
+                            time.sleep(sleep_time)
+                            continue
+                        else:
+                            return OrderResult(
+                                success=False,
+                                order_id=order_id,
+                                exchange_order_id=None,
+                                status='FAILED',
+                                filled_price=None,
+                                filled_quantity=None,
+                                error_message=error_msg,
+                                profitview_response=response_data
+                            )
 
                     print(f"✅ Order executed successfully")
                     print(f"   Order ID: {order_id}")
@@ -375,8 +423,8 @@ class ProfitViewExecutor:
                         order_id=order_id,
                         exchange_order_id=exchange_order_id,
                         status='FILLED',
-                        filled_price=response_data.get('filledPrice') or position['entry_price'],
-                        filled_quantity=response_data.get('filledQuantity') or position['quantity'],
+                        filled_price=filled_price,
+                        filled_quantity=filled_quantity,
                         error_message=None,
                         profitview_response=response_data
                     )
