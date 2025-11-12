@@ -721,7 +721,7 @@ class TradeMonitor:
         web3_provider = config.get('web3_provider_uri', 'https://eth.llamarpc.com')
         try:
             self.w3 = Web3(Web3.HTTPProvider(web3_provider))
-            if not self.w3.isConnected():
+            if not self.w3.is_connected:
                 logger.warning(f"Web3 connection failed to {web3_provider}, DEX parsing will be limited")
                 self.w3 = None
         except Exception as e:
@@ -765,7 +765,7 @@ class TradeMonitor:
         logger.info(f"Check interval: {check_interval}s")
         logger.info(f"Paper mode: {paper_mode}")
         logger.info(f"API: Etherscan V2 (chainid={config.get('chainid', 1)})")
-        logger.info(f"Web3: {'Connected' if self.w3 and self.w3.isConnected() else 'Not connected'}")
+        logger.info(f"Web3: {'Connected' if self.w3 and self.w3.is_connected else 'Not connected'}")
         logger.info(f"DEX Parser: {'Enabled' if self.parser else 'Disabled'}")
 
     def load_tracked_wallets(self) -> List[WalletState]:
