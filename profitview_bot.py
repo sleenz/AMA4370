@@ -37,8 +37,8 @@ class Trading(Link):
         self.orders_executed = 0
         self.total_volume = 0.0
 
-        self.log(f"🤖 Wallet Copy Bot initialized for {self.venue}")
-        self.log(f"📝 Paper Trading Mode Active")
+        print(f"🤖 Wallet Copy Bot initialized for {self.venue}")
+        print(f"📝 Paper Trading Mode Active")
 
     @http.route
     def post_execute_order(self, data):
@@ -88,8 +88,8 @@ class Trading(Link):
                 }
 
             # Execute order
-            self.log(f"📤 Executing {side} order: {quantity} {symbol}")
-            self.log(f"   Size: ${size_usd:.2f}, Leverage: {leverage}x")
+            print(f"📤 Executing {side} order: {quantity} {symbol}")
+            print(f"   Size: ${size_usd:.2f}, Leverage: {leverage}x")
 
             order = self.create_market_order(
                 venue=self.venue,
@@ -99,7 +99,7 @@ class Trading(Link):
             )
 
             if order.get('error'):
-                self.log(f"❌ Order failed: {order.get('error')}")
+                print(f"❌ Order failed: {order.get('error')}")
                 return {
                     'success': False,
                     'error': order.get('error')
@@ -110,15 +110,15 @@ class Trading(Link):
             filled_price = order.get('order_price') or order.get('filledPrice')
             filled_qty = order.get('order_size') or quantity
 
-            self.log(f"✅ Order filled: {order_id}")
-            self.log(f"   Price: ${filled_price}, Quantity: {filled_qty}")
+            print(f"✅ Order filled: {order_id}")
+            print(f"   Price: ${filled_price}, Quantity: {filled_qty}")
 
             # Place stop loss
             if stop_loss and stop_loss.get('price'):
                 stop_price = stop_loss['price']
                 stop_side = 'Sell' if side == 'Buy' else 'Buy'
 
-                self.log(f"📍 Placing stop loss at ${stop_price}")
+                print(f"📍 Placing stop loss at ${stop_price}")
 
                 try:
                     stop_order = self.create_limit_order(
@@ -130,11 +130,11 @@ class Trading(Link):
                     )
 
                     if not stop_order.get('error'):
-                        self.log(f"✅ Stop loss placed")
+                        print(f"✅ Stop loss placed")
                     else:
-                        self.log(f"⚠️ Could not place stop loss")
+                        print(f"⚠️ Could not place stop loss")
                 except Exception as e:
-                    self.log(f"⚠️ Stop loss error: {e}")
+                    print(f"⚠️ Stop loss error: {e}")
 
             # Update stats
             self.orders_executed += 1
@@ -150,7 +150,7 @@ class Trading(Link):
             }
 
         except Exception as e:
-            self.log(f"❌ Error: {e}")
+            print(f"❌ Error: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -167,7 +167,7 @@ class Trading(Link):
             venue = data.get('venue', self.venue)
             positions = self.fetch_positions(venue=venue)
 
-            self.log(f"📊 Retrieved {len(positions)} positions")
+            print(f"📊 Retrieved {len(positions)} positions")
 
             return {
                 'success': True,
@@ -175,7 +175,7 @@ class Trading(Link):
                 'venue': venue
             }
         except Exception as e:
-            self.log(f"❌ Error: {e}")
+            print(f"❌ Error: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -197,7 +197,7 @@ class Trading(Link):
             realized_pnl = balance.get('realizedPnl', 0)
             unrealized_pnl = balance.get('unrealizedPnl', 0)
 
-            self.log(f"💰 P&L: ${total_pnl:.2f}")
+            print(f"💰 P&L: ${total_pnl:.2f}")
 
             return {
                 'success': True,
@@ -207,7 +207,7 @@ class Trading(Link):
                 'venue': venue
             }
         except Exception as e:
-            self.log(f"❌ Error: {e}")
+            print(f"❌ Error: {e}")
             return {
                 'success': False,
                 'error': str(e),
