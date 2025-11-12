@@ -362,10 +362,14 @@ class ProfitViewExecutor:
 
                 # Check success - must check BOTH status code AND success field
                 if response.status_code == 200:
+                    # ProfitView wraps responses in 'data' field
+                    # Response: {'status': 'success', 'data': {'success': True, 'orderId': ..., 'filledPrice': ...}}
+                    bot_data = response_data.get('data', response_data)
+
                     # Check if the response indicates success
-                    if response_data.get('success') == False:
+                    if bot_data.get('success') == False:
                         # Bot returned error in success response
-                        error_msg = response_data.get('error') or 'Unknown error from bot'
+                        error_msg = bot_data.get('error') or 'Unknown error from bot'
                         print(f"❌ Order failed: {error_msg}")
 
                         if attempt < max_retries - 1:
@@ -385,12 +389,12 @@ class ProfitViewExecutor:
                                 profitview_response=response_data
                             )
 
-                    # Successful response - verify we have real data
-                    exchange_order_id = response_data.get('exchangeOrderId') or response_data.get('orderId')
-                    filled_price = response_data.get('filledPrice')
-                    filled_quantity = response_data.get('filledQuantity')
+                    # Successful response - extract from nested data
+                    exchange_order_id = bot_data.get('exchangeOrderId') or bot_data.get('orderId')
+                    filled_price = bot_data.get('filledPrice')
+                    filled_quantity = bot_data.get('filledQuantity')
 
-                    # Don't use fallback data - if missing, it's an error
+                    # Verify we have real data
                     if not filled_price or not filled_quantity:
                         error_msg = "Response missing order data (price or quantity)"
                         print(f"❌ {error_msg}")
