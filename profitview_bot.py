@@ -125,13 +125,19 @@ class Trading(Link):
                 size=quantity
             )
 
+            # DEBUG: Return full order response for diagnostics
+            order_str = str(order) if order else 'None'
+
             # Improved error detection
             if not order or order.get('error'):
                 error_msg = order.get('error') if order else 'Order returned empty response'
                 print(f"❌ Order failed: {error_msg}")
                 return {
                     'success': False,
-                    'error': error_msg
+                    'error': f'{error_msg}',
+                    'debug_order_response': order_str,
+                    'debug_symbol_used': woo_symbol,
+                    'debug_venue': self.venue
                 }
 
             # Get order details
@@ -145,7 +151,12 @@ class Trading(Link):
                 print(f"   Response: {order}")
                 return {
                     'success': False,
-                    'error': 'Invalid order response - missing order ID or price'
+                    'error': 'Invalid order response - missing order ID or price',
+                    'debug_order_response': order_str,
+                    'debug_order_id': str(order_id) if order_id else 'None',
+                    'debug_filled_price': str(filled_price) if filled_price else 'None',
+                    'debug_symbol_used': woo_symbol,
+                    'debug_venue': self.venue
                 }
 
             print(f"✅ Order filled: {order_id}")
