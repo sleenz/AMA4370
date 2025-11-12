@@ -791,7 +791,7 @@ class TradeMonitor:
                 FROM wallets w
                 LEFT JOIN monitoring_state m ON w.address = m.wallet_address
                 WHERE w.is_active = 1
-                ORDER BY w.rank ASC
+                ORDER BY w.rank_score DESC
             """)
 
             wallets = []
