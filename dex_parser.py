@@ -63,13 +63,13 @@ class SwapInfo:
     # Action classification
     action: str  # 'BUY' or 'SELL'
 
-    # Multi-hop info
-    is_multihop: bool
-    path: List[str] = field(default_factory=list)  # Full token path
-
     # Wallet info
     wallet_address: str
     recipient_address: str  # May differ from sender
+
+    # Multi-hop info
+    is_multihop: bool
+    path: List[str] = field(default_factory=list)  # Full token path
 
 
 @dataclass
