@@ -140,10 +140,13 @@ class Trading(Link):
                     'debug_venue': self.venue
                 }
 
-            # Get order details
-            order_id = order.get('order_id') or order.get('orderId')
-            filled_price = order.get('order_price') or order.get('filledPrice')
-            filled_qty = order.get('order_size') or order.get('filledQuantity')
+            # Get order details - check both nested and flat structure
+            # ProfitView returns: {'data': {'order_id': '...', 'order_price': ..., 'order_size': ...}}
+            order_data = order.get('data', order)  # Use nested data if available, otherwise use order directly
+
+            order_id = order_data.get('order_id') or order_data.get('orderId')
+            filled_price = order_data.get('order_price') or order_data.get('filledPrice')
+            filled_qty = order_data.get('order_size') or order_data.get('filledQuantity')
 
             # Verify we got actual data back
             if not order_id or filled_price is None:
