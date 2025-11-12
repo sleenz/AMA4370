@@ -40,6 +40,28 @@ class Trading(Link):
         print(f"🤖 Wallet Copy Bot initialized for {self.venue}")
         print(f"📝 Paper Trading Mode Active")
 
+    def _translate_symbol(self, symbol: str) -> str:
+        """
+        Translate standard symbol format to WOO X format
+
+        WOO X uses: PERP_BTC_USDT for perpetual futures
+        Standard input: BTCUSDT
+        """
+        # Remove any slashes or hyphens
+        symbol = symbol.replace('/', '').replace('-', '')
+
+        # Common pairs - translate to WOO X PERP format
+        # BTCUSDT -> PERP_BTC_USDT
+        if symbol.endswith('USDT'):
+            base = symbol[:-4]  # Remove 'USDT'
+            return f'PERP_{base}_USDT'
+        elif symbol.endswith('USD'):
+            base = symbol[:-3]  # Remove 'USD'
+            return f'PERP_{base}_USD'
+        else:
+            # Assume it's already in correct format
+            return symbol
+
     @http.route
     def post_execute_order(self, data):
         """
@@ -61,6 +83,11 @@ class Trading(Link):
         try:
             # Extract order details
             symbol = data.get('symbol', 'BTCUSDT')
+
+            # Translate symbol to WOO X format
+            woo_symbol = self._translate_symbol(symbol)
+            print(f"📝 Symbol translation: {symbol} → {woo_symbol}")
+
             side = data.get('side', 'buy').capitalize()
             quantity = float(data.get('quantity', 0))
             leverage = int(data.get('leverage', Config.DEFAULT_LEVERAGE))
@@ -88,27 +115,38 @@ class Trading(Link):
                 }
 
             # Execute order
-            print(f"📤 Executing {side} order: {quantity} {symbol}")
+            print(f"📤 Executing {side} order: {quantity} {woo_symbol}")
             print(f"   Size: ${size_usd:.2f}, Leverage: {leverage}x")
 
             order = self.create_market_order(
                 venue=self.venue,
-                sym=symbol,
+                sym=woo_symbol,  # Use translated symbol
                 side=side,
                 size=quantity
             )
 
-            if order.get('error'):
-                print(f"❌ Order failed: {order.get('error')}")
+            # Improved error detection
+            if not order or order.get('error'):
+                error_msg = order.get('error') if order else 'Order returned empty response'
+                print(f"❌ Order failed: {error_msg}")
                 return {
                     'success': False,
-                    'error': order.get('error')
+                    'error': error_msg
                 }
 
             # Get order details
             order_id = order.get('order_id') or order.get('orderId')
             filled_price = order.get('order_price') or order.get('filledPrice')
-            filled_qty = order.get('order_size') or quantity
+            filled_qty = order.get('order_size') or order.get('filledQuantity')
+
+            # Verify we got actual data back
+            if not order_id or filled_price is None:
+                print(f"❌ Order response missing required data")
+                print(f"   Response: {order}")
+                return {
+                    'success': False,
+                    'error': 'Invalid order response - missing order ID or price'
+                }
 
             print(f"✅ Order filled: {order_id}")
             print(f"   Price: ${filled_price}, Quantity: {filled_qty}")
@@ -123,7 +161,7 @@ class Trading(Link):
                 try:
                     stop_order = self.create_limit_order(
                         venue=self.venue,
-                        sym=symbol,
+                        sym=woo_symbol,  # Use translated symbol
                         side=stop_side,
                         size=quantity,
                         price=stop_price
