@@ -52,7 +52,7 @@ def calculate_tiered_allocation(rank_position, total_wallets, tier1_pct, tier2_p
 
 def import_wallets_tiered(
     csv_path: str = "discovered_wallets.csv",
-    db_path: str = "database/wallets.db",
+    db_path: str = "wallet_trading.db",
     top_n: int = None,
     tier1_pct: float = 10.0,
     tier2_pct: float = 7.0,
@@ -258,8 +258,8 @@ def main():
     parser.add_argument(
         '--db-path',
         type=str,
-        default='database/wallets.db',
-        help='Path to database (default: database/wallets.db)'
+        default='wallet_trading.db',
+        help='Path to database (default: wallet_trading.db)'
     )
     parser.add_argument(
         '--top',

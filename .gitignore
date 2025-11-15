@@ -1,4 +1,5 @@
 # API Keys and Secrets
+config.json
 config/api_keys.json
 config/profitview_config.json
 config/binance_config.json

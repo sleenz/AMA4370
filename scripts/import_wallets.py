@@ -20,7 +20,7 @@ import argparse
 
 def import_wallets_from_csv(
     csv_path: str = "discovered_wallets.csv",
-    db_path: str = "database/wallets.db",
+    db_path: str = "wallet_trading.db",
     top_n: int = None,
     allocation_pct: float = 5.0
 ) -> None:
@@ -175,8 +175,8 @@ def main():
     parser.add_argument(
         '--db-path',
         type=str,
-        default='database/wallets.db',
-        help='Path to database (default: database/wallets.db)'
+        default='wallet_trading.db',
+        help='Path to database (default: wallet_trading.db)'
     )
     parser.add_argument(
         '--top',

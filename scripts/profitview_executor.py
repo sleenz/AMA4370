@@ -142,7 +142,7 @@ class ProfitViewExecutor:
 
     def _init_database(self):
         """Initialize database tables for order tracking"""
-        conn = sqlite3.connect('database/wallets.db')
+        conn = sqlite3.connect('wallet_trading.db')
         cursor = conn.cursor()
 
         # Create orders table if it doesn't exist
@@ -518,7 +518,7 @@ class ProfitViewExecutor:
 
     def _log_order_pre_execution(self, order_id: str, position: Dict, payload: Dict):
         """Log order before sending (for audit trail)"""
-        conn = sqlite3.connect('database/wallets.db')
+        conn = sqlite3.connect('wallet_trading.db')
 
         conn.execute("""
             INSERT INTO orders (
@@ -551,7 +551,7 @@ class ProfitViewExecutor:
 
     def _log_order_post_execution(self, order_id: str, result: OrderResult):
         """Update order log after execution"""
-        conn = sqlite3.connect('database/wallets.db')
+        conn = sqlite3.connect('wallet_trading.db')
 
         conn.execute("""
             UPDATE orders

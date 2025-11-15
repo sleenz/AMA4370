@@ -1,7 +1,0 @@
-{
-  "etherscan_api_key": "UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH",
-  "bscscan_api_key": "UCS2VM99HUSPWTXIITTBSH4BJ4844SXMIH",
-  "rate_limit_per_second": 5,
-  "max_retries": 5,
-  "request_timeout": 30
-}
