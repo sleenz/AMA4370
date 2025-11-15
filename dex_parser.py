@@ -124,6 +124,43 @@ class DexParser:
 
         # PancakeSwap V3
         '0x13f4ea83d0bd40e75c8222255bc855a974568dd4': 'pancakeswap_v3',
+
+        # SushiSwap
+        '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f': 'sushiswap_v2',  # Ethereum
+        '0x1b02da8cb0d097eb8d57a175b88c7d8b47997506': 'sushiswap_v2',  # BSC
+
+        # 1inch Routers
+        '0x1111111254eeb25477b68fb85ed929f73a960582': '1inch_v5',  # V5 Router
+        '0x1111111254fb6c44bac0bed2854e76f90643097d': '1inch_v4',  # V4 Router
+        '0x11111112542d85b3ef69ae05771c2dccff4faa26': '1inch_v3',  # V3 Router
+
+        # 0x Exchange
+        '0xdef1c0ded9bec7f1a1670819833240f027b25eff': '0x_v4',  # V4 Exchange Proxy
+        '0x61935cbdd02287b511119ddb11aeb42f1593b7ef': '0x_v3',  # V3 Exchange Proxy
+
+        # Curve Finance
+        '0x8e764bc2e8b16f2c028c2e115a0363d91ae37f2f': 'curve',  # Old Router
+        '0xf0d4c12a5768d806021f80a262b4d39d26c58b8d': 'curve',  # New Router
+
+        # Balancer V2
+        '0xba12222222228d8ba445958a75a0704d566bf2c8': 'balancer_v2',  # Vault
+
+        # Kyber Network
+        '0x6131b5fae19ea4f9d964eac0408e4408b66337b5': 'kyber',  # Classic Router
+        '0x1c87257f5e8609940bc751a07bb085bb7f8cdbe6': 'kyber',  # Aggregation Router
+
+        # Matcha (0x API)
+        '0xdef1c0ded9bec7f1a1670819833240f027b25eff': 'matcha',  # Same as 0x V4
+
+        # ParaSwap
+        '0xdef171fe48cf0115b1d80b88dc8eab59176fee57': 'paraswap_v5',  # Augustus V5
+
+        # OpenOcean
+        '0x6352a56caadc4f1e25cd6c75970fa768a3304e64': 'openocean',  # Ethereum Router
+
+        # DODO
+        '0xa356867fdcea8e71aeaf87805808803806231fdc': 'dodo_v2',  # V2 Proxy
+        '0x8f8dd7db1bda5ed3da8c9daf3bfa471c12d58486': 'dodo_v1',  # V1 Proxy
     }
 
     # Non-swap function selectors (to filter out)
