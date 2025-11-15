@@ -44,6 +44,10 @@ wallet_trading.db
 # Output files
 discovered_wallets.csv
 
+# Log files
+*.log
+signals_paper.log
+
 # IDE
 .vscode/
 .idea/
