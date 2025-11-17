@@ -786,12 +786,20 @@ class TradeMonitor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
+            # Get current block for new wallets (7 days lookback = ~50,000 blocks)
+            try:
+                current_block = self.fetcher.get_latest_block()
+                default_start_block = max(1, current_block - 50000)  # Start from 7 days ago
+            except Exception as e:
+                logger.warning(f"Could not fetch current block, using default: {e}")
+                default_start_block = 1  # Fallback to block 1
+
             # Join wallets + monitoring_state
             cursor.execute("""
                 SELECT
                     w.address,
                     w.allocation_pct,
-                    COALESCE(m.last_checked_block, 0) as last_checked_block,
+                    COALESCE(m.last_checked_block, ?) as last_checked_block,
                     COALESCE(m.last_checked_timestamp, datetime('now')) as last_checked_timestamp,
                     COALESCE(m.consecutive_errors, 0) as consecutive_errors,
                     COALESCE(m.total_transactions_found, 0) as total_transactions_found
@@ -799,7 +807,7 @@ class TradeMonitor:
                 LEFT JOIN monitoring_state m ON w.address = m.wallet_address
                 WHERE w.is_active = 1
                 ORDER BY w.rank_score DESC
-            """)
+            """, (default_start_block,))
 
             wallets = []
             for row in cursor.fetchall():
@@ -811,6 +819,11 @@ class TradeMonitor:
                     consecutive_errors=row[4],
                     total_transactions_found=row[5]
                 ))
+
+            # Log initialization for new wallets
+            new_wallets = [w for w in wallets if w.total_transactions_found == 0]
+            if new_wallets:
+                logger.info(f"📝 Initializing {len(new_wallets)} new wallets with start block: {default_start_block:,}")
 
             return wallets
 
