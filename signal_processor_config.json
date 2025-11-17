@@ -1,0 +1,42 @@
+{
+  "total_capital_usd": 20000,
+  "trade_multiplier": 0.5,
+  "max_leverage": 10,
+
+  "max_total_positions": 20,
+  "max_same_pair_positions": 3,
+  "max_position_pct": 2.5,
+  "max_total_risk_pct": 20.0,
+
+  "max_spread_pct": 0.5,
+  "min_depth_multiplier": 10,
+
+  "signal_aggregation": {
+    "enabled": true,
+    "time_window_seconds": 120,
+    "max_signals_per_aggregation": 5,
+    "boost_per_signal": 0.3,
+    "max_multiplier": 2.0
+  },
+
+  "slippage": {
+    "acceptable_slippage_pct": 1.0,
+    "warning_slippage_pct": 0.5
+  },
+
+  "signal_queue": {
+    "max_queue_size": 20,
+    "signal_expiration_seconds": 300,
+    "max_retries": 3
+  },
+
+  "comments": {
+    "total_capital_usd": "Total capital for trading ($20,000)",
+    "trade_multiplier": "1/2 rule: Use 50% of allocated capital per trade",
+    "max_leverage": "Maximum leverage allowed (10x for safety)",
+    "max_position_pct": "2.5% max per trade ($500 max order)",
+    "max_total_risk_pct": "20% max total risk ($4,000 max loss)",
+    "max_total_positions": "Max 20 concurrent positions",
+    "max_same_pair_positions": "Max 3 positions on same pair"
+  }
+}

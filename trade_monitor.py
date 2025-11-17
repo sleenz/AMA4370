@@ -51,6 +51,10 @@ from wallet_discovery import TokenBucket, load_config
 # Import comprehensive DEX parser
 from dex_parser import DexParser, SwapInfo
 
+# Import signal processor and ProfitView executor (Phase 3.1 + 5)
+from signal_processor import SignalProcessor, Position
+from scripts.profitview_executor import ProfitViewExecutor
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -118,6 +122,7 @@ class TradeSignal:
     wallet_address: str
     source_tx_hash: str
     token_address: str
+    token_symbol: str  # Added for signal_processor
     action: str
     amount_usd: float
     leverage: int
@@ -542,11 +547,13 @@ class SignalEmitter:
         self,
         db_path: str = 'wallet_trading.db',
         paper_mode: bool = True,
-        paper_log: str = 'signals_paper.log'
+        paper_log: str = 'signals_paper.log',
+        enable_profitview: bool = True
     ):
         self.db_path = db_path
         self.paper_mode = paper_mode
         self.paper_log = paper_log
+        self.enable_profitview = enable_profitview
 
         # Risk limits
         self.max_copy_size_usd = 10000  # Max $10k per trade
@@ -555,6 +562,31 @@ class SignalEmitter:
         # Setup paper mode logging
         if self.paper_mode:
             self._setup_paper_logging()
+
+        # Initialize signal processor and ProfitView executor (if enabled)
+        self.signal_processor = None
+        self.profitview_executor = None
+
+        if self.enable_profitview:
+            try:
+                logger.info("Initializing signal processor and ProfitView executor...")
+
+                # Initialize signal processor
+                self.signal_processor = SignalProcessor(
+                    config_path='signal_processor_config.json',
+                    db_path=db_path
+                )
+
+                # Initialize ProfitView executor
+                self.profitview_executor = ProfitViewExecutor(
+                    config_path='config/profitview_config.json'
+                )
+
+                logger.info("✅ ProfitView integration enabled")
+            except Exception as e:
+                logger.error(f"Failed to initialize ProfitView integration: {e}")
+                logger.warning("Falling back to paper mode only")
+                self.enable_profitview = False
 
     def _setup_paper_logging(self) -> None:
         """Configure paper mode file logging."""
@@ -611,6 +643,7 @@ class SignalEmitter:
             wallet_address=wallet_state.address,
             source_tx_hash=trade.tx_hash,
             token_address=trade.token_address,
+            token_symbol=trade.token_symbol,  # Added for signal_processor
             action=trade.action,
             amount_usd=trade.amount_usd,
             leverage=trade.leverage_multiplier,
@@ -620,10 +653,19 @@ class SignalEmitter:
             created_at=datetime.now()
         )
 
-        # Emit signal
+        # Log to paper mode (always log for audit trail)
         if self.paper_mode:
             self._log_paper_signal(signal, trade)
-        else:
+
+        # Process through signal processor and send to ProfitView (if enabled)
+        if self.enable_profitview and self.signal_processor and self.profitview_executor:
+            try:
+                self._process_and_execute_signal(signal, trade)
+            except Exception as e:
+                logger.error(f"Failed to process signal through ProfitView: {e}")
+                # Continue anyway - signal is logged in paper mode
+        elif not self.paper_mode:
+            # Fallback: Queue to database if not paper mode and ProfitView disabled
             self._queue_signal(signal)
 
         return signal
@@ -688,6 +730,84 @@ class SignalEmitter:
 
         finally:
             conn.close()
+
+    def _process_and_execute_signal(self, signal: TradeSignal, trade: ParsedTrade) -> None:
+        """
+        Process signal through signal processor and execute via ProfitView.
+
+        Pipeline:
+            1. Convert TradeSignal → format for signal_processor
+            2. signal_processor.process_signal() → filters & sizes position
+            3. If approved → profitview_executor.send_order()
+            4. Log results
+
+        Args:
+            signal: Generated trade signal
+            trade: Original parsed trade
+        """
+        logger.info(f"\n{'='*70}")
+        logger.info(f"🔄 Processing signal through ProfitView pipeline")
+        logger.info(f"{'='*70}")
+        logger.info(f"Token: {trade.token_symbol} ({trade.action})")
+        logger.info(f"Amount: ${trade.amount_usd:.2f}")
+        logger.info(f"Wallet: {signal.wallet_address[:10]}...")
+
+        # Step 1: Process through signal processor
+        logger.info(f"\nStep 1: Signal Processor filtering...")
+
+        position = self.signal_processor.process_signal(signal)
+
+        if not position:
+            logger.warning(f"❌ Signal rejected by signal processor")
+            logger.warning(f"   Reason: Check signal_processor logs for details")
+            return
+
+        logger.info(f"✅ Signal approved by signal processor")
+        logger.info(f"   Pair: {position.pair}")
+        logger.info(f"   Side: {position.side}")
+        logger.info(f"   Size: ${position.size_usd:.2f}")
+        logger.info(f"   Leverage: {position.leverage}x")
+        logger.info(f"   Notional: ${position.notional_usd:.2f}")
+
+        # Step 2: Convert Position to format for ProfitView executor
+        logger.info(f"\nStep 2: Sending to ProfitView...")
+
+        profitview_position = {
+            'wallet_id': hash(signal.wallet_address) % 1000000,  # Generate numeric ID
+            'pair': position.pair.replace('USDT', '/USDT').replace('USDC', '/USDC'),  # BTC/USDT format
+            'side': position.side,
+            'size_usd': position.size_usd,
+            'quantity': position.size_base if position.size_base > 0 else position.size_usd / position.entry_price if position.entry_price > 0 else 0.001,
+            'leverage': position.leverage,
+            'entry_price': position.entry_price,
+            'stop_loss_price': position.stop_loss_price,
+            'take_profit_price': position.take_profit_price
+        }
+
+        # Step 3: Send order to ProfitView
+        result = self.profitview_executor.send_order(profitview_position)
+
+        # Step 4: Log result
+        logger.info(f"\n{'='*70}")
+        if result.success:
+            logger.info(f"✅ ORDER EXECUTED SUCCESSFULLY")
+            logger.info(f"{'='*70}")
+            logger.info(f"   Order ID: {result.order_id}")
+            if result.exchange_order_id:
+                logger.info(f"   Exchange Order ID: {result.exchange_order_id}")
+            logger.info(f"   Status: {result.status}")
+            if result.filled_price:
+                logger.info(f"   Filled Price: ${result.filled_price:,.2f}")
+            if result.filled_quantity:
+                logger.info(f"   Filled Quantity: {result.filled_quantity}")
+            logger.info(f"{'='*70}\n")
+        else:
+            logger.error(f"❌ ORDER FAILED")
+            logger.error(f"{'='*70}")
+            logger.error(f"   Order ID: {result.order_id}")
+            logger.error(f"   Status: {result.status}")
+            logger.error(f"   Error: {result.error_message}")
+            logger.error(f"{'='*70}\n")
 
 
 # ============================================================================
@@ -757,7 +877,8 @@ class TradeMonitor:
         self.leverage_detector = LeverageDetector()
         self.signal_emitter = SignalEmitter(
             db_path=db_path,
-            paper_mode=paper_mode
+            paper_mode=paper_mode,
+            enable_profitview=True  # Enable ProfitView integration
         )
 
         # Statistics
