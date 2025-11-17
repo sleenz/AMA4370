@@ -29,6 +29,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 from web3 import Web3
 from web3.types import TxData, TxReceipt, LogReceipt
+from web3.exceptions import TransactionNotFound
 from eth_abi import decode as abi_decode
 
 logger = logging.getLogger(__name__)
@@ -334,8 +335,22 @@ class DexParser:
                 logger.warning(f"Unknown router type: {router_type}")
                 return None
 
+        except TransactionNotFound:
+            # Expected: old transactions not available in RPC provider
+            logger.debug(f"Transaction {tx_hash[:10]}... not found in RPC (old tx)")
+            return None
+        except (ValueError, AttributeError) as e:
+            # Expected errors: receipt not available, null values for old txs
+            error_msg = str(e).lower()
+            if 'not found' in error_msg or 'none' in error_msg:
+                logger.debug(f"Transaction {tx_hash[:10]}... not available in RPC (likely old)")
+                return None
+            else:
+                logger.error(f"Error parsing transaction {tx_hash}: {e}")
+                return None
         except Exception as e:
-            logger.error(f"Error parsing transaction {tx_hash}: {e}")
+            # Unexpected errors
+            logger.warning(f"Unexpected error parsing {tx_hash[:10]}...: {e}")
             return None
 
     # ========================================================================

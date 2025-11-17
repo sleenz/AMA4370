@@ -58,6 +58,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress DEBUG spam from external libraries
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('web3').setLevel(logging.WARNING)
+logging.getLogger('web3.RequestManager').setLevel(logging.WARNING)
+logging.getLogger('web3.providers.HTTPProvider').setLevel(logging.WARNING)
+logging.getLogger('dex_parser').setLevel(logging.INFO)  # Suppress dex_parser DEBUG messages
+
 
 # ============================================================================
 # DATA CLASSES
