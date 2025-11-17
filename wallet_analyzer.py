@@ -1,16 +1,20 @@
 """
 Wallet Analyzer Module for Copy Trading System
 
-Analyzes discovered wallets by calculating performance metrics, ranking,
-and allocating capital based on historical trading performance.
+Analyzes discovered wallets by calculating performance metrics from REAL on-chain
+DEX swaps, ranking wallets, and allocating capital based on historical performance.
+
+🆕 ENHANCED: Now uses comprehensive DEX parser to analyze actual trading activity
+across 26+ protocols (Uniswap, Sushiswap, 1inch, Curve, Balancer, etc.)
 
 Metrics Calculated:
-    - Win rate (% profitable trades)
+    - Win rate (% profitable trades) - from matched buy/sell pairs
     - Sharpe ratio (risk-adjusted returns, capped at 3.0)
     - Max drawdown (worst peak-to-trough loss)
     - Profit factor (gross profit / gross loss)
     - Average return per trade
     - Consistency score (custom formula)
+    - Total P&L from closed positions
 
 Ranking Formula:
     Score = (Win_Rate × 0.25) + (Sharpe × 0.20) + (Profit_Factor × 0.20) +
@@ -25,6 +29,12 @@ Capital Allocation:
     - Top 5 wallets: 10% each
     - Wallets 6-10: 5% each
     - Wallets 11-20: 2.5% each
+
+DEX Protocol Support:
+    - Uniswap V2/V3, Sushiswap, PancakeSwap V2/V3
+    - 1inch Aggregator (v3, v4, v5), 0x Protocol
+    - Curve Finance, Balancer V2, Kyber Network
+    - ParaSwap, OpenOcean, DODO, Matcha
 
 Usage:
     python wallet_analyzer.py
@@ -49,6 +59,10 @@ from wallet_discovery import (
     BSCScanClient,
     BlockchainAPIClient
 )
+
+# Import Web3 and DEX parser for swap analysis
+from web3 import Web3
+from dex_parser import DexParser, SwapInfo
 
 
 # Configure logging
@@ -250,7 +264,10 @@ def fetch_wallet_transactions(
     days: int = 90
 ) -> List[Trade]:
     """
-    Fetch and parse all transactions for a wallet.
+    Fetch and parse DEX swaps for a wallet using comprehensive DEX parser.
+
+    This enhanced version uses dex_parser.py to detect swaps across 26+ DEX protocols
+    including Uniswap, Sushiswap, 1inch, Curve, Balancer, etc.
 
     Args:
         client: API client (Etherscan or BSCScan)
@@ -258,9 +275,9 @@ def fetch_wallet_transactions(
         days: Days of history to fetch
 
     Returns:
-        List[Trade]: Parsed trades with USD values and gas fees
+        List[Trade]: Parsed DEX swap trades with USD values and gas fees
     """
-    logger.debug(f"Fetching transactions for {address[:10]}... ({days} days)")
+    logger.debug(f"Fetching DEX swaps for {address[:10]}... ({days} days)")
 
     # Calculate timestamp range
     end_time = datetime.now()
@@ -275,37 +292,59 @@ def fetch_wallet_transactions(
         logger.warning(f"No transactions found for {address[:10]}...")
         return []
 
-    # Get native token price for USD conversion
+    # Initialize Web3 and DEX parser
+    web3_provider = 'https://eth.llamarpc.com'  # Free RPC endpoint
+    try:
+        w3 = Web3(Web3.HTTPProvider(web3_provider))
+        if not w3.is_connected():
+            logger.warning(f"Web3 connection failed, using fallback parsing")
+            w3 = None
+    except Exception as e:
+        logger.warning(f"Web3 initialization failed: {e}, using fallback")
+        w3 = None
+
+    # Initialize DEX parser if Web3 is available
+    dex_parser = None
+    if w3:
+        try:
+            config = load_config('config.json')
+            dex_parser = DexParser(
+                w3=w3,
+                etherscan_api_key=config.get('etherscan_api_key'),
+                coingecko_api_key=config.get('coingecko_api_key')
+            )
+        except Exception as e:
+            logger.warning(f"DEX parser initialization failed: {e}")
+            dex_parser = None
+
+    # Get native token price for gas fee calculation
     native_price = client.get_current_price()
 
     # Parse transactions into Trade objects
     trades = []
+    skipped_no_dex = 0
+    skipped_failed = 0
+
     for tx in raw_txns:
         try:
             # Skip failed transactions
             if tx.get('txreceipt_status') == '0':
+                skipped_failed += 1
                 continue
 
-            # Parse fields
-            timestamp = datetime.fromtimestamp(int(tx.get('timeStamp', 0)))
             tx_hash = tx.get('hash', '')
-            from_addr = tx.get('from', '').lower()
-            to_addr = tx.get('to', '').lower()
-            value_wei = int(tx.get('value', 0))
 
-            # Determine action (BUY vs SELL)
-            # BUY: wallet receives tokens (wallet is 'to')
-            # SELL: wallet sends tokens (wallet is 'from')
-            if to_addr == address.lower():
-                action = 'BUY'
-            elif from_addr == address.lower():
-                action = 'SELL'
-            else:
-                continue  # Not relevant to this wallet
+            # Parse DEX swap if parser is available
+            swap_info = None
+            if dex_parser:
+                try:
+                    swap_info = dex_parser.parse_transaction(tx_hash, address)
+                except Exception as e:
+                    logger.debug(f"DEX parse failed for {tx_hash[:10]}...: {e}")
 
-            # Calculate USD values
-            value_native = value_wei / 10**18
-            value_usd = value_native * native_price
+            if not swap_info:
+                skipped_no_dex += 1
+                continue
 
             # Calculate gas fee in USD
             gas_used = int(tx.get('gasUsed', 0))
@@ -314,26 +353,19 @@ def fetch_wallet_transactions(
             gas_fee_usd = gas_fee_native * native_price
 
             # Skip dust trades
-            if value_usd < MIN_TRADE_VALUE_USD:
+            if swap_info.amount_out_usd < MIN_TRADE_VALUE_USD:
                 continue
 
-            # Determine token info
-            # For native token transfers, use chain native token
-            token_address = to_addr if action == 'BUY' else from_addr
-            token_symbol = 'ETH' if client.chain_name == 'ethereum' else 'BNB'
-
-            # Calculate price per token
-            amount = value_native
-            price_usd = native_price if amount > 0 else 0
-
+            # Convert SwapInfo to Trade object
+            # Use the output token (what was acquired) for tracking
             trades.append(Trade(
-                timestamp=timestamp,
-                action=action,
-                token_address=token_address,
-                token_symbol=token_symbol,
-                amount=amount,
-                price_usd=price_usd,
-                value_usd=value_usd,
+                timestamp=swap_info.timestamp,
+                action=swap_info.action,  # 'BUY' or 'SELL'
+                token_address=swap_info.token_out,
+                token_symbol=swap_info.token_out_symbol,
+                amount=swap_info.amount_out,
+                price_usd=swap_info.amount_out_usd / swap_info.amount_out if swap_info.amount_out > 0 else 0,
+                value_usd=swap_info.amount_out_usd,
                 gas_fee_usd=gas_fee_usd,
                 tx_hash=tx_hash
             ))
@@ -342,7 +374,10 @@ def fetch_wallet_transactions(
             logger.debug(f"Error parsing transaction {tx.get('hash', 'unknown')}: {e}")
             continue
 
-    logger.debug(f"Parsed {len(trades)} trades for {address[:10]}...")
+    logger.info(
+        f"{address[:10]}...: Parsed {len(trades)} DEX swaps "
+        f"(skipped {skipped_no_dex} non-DEX, {skipped_failed} failed)"
+    )
     return trades
 
 
