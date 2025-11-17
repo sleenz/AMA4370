@@ -650,7 +650,7 @@ class DexParser:
         if address_lower in self.token_cache:
             info = self.token_cache[address_lower]
             # Refresh price if older than 5 minutes
-            if (datetime.now() - info.last_updated).seconds < 300:
+            if (datetime.now() - info.last_updated).total_seconds() < 300:
                 return info
 
         # Fetch from blockchain
@@ -692,9 +692,8 @@ class DexParser:
             2. Query CoinGecko API
             3. Fallback: Return 0.0
         """
-        # Hardcoded for common tokens
+        # Hardcoded for stablecoins only (WETH removed - fetched from CoinGecko)
         KNOWN_PRICES = {
-            '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 3400.0,  # WETH
             '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 1.0,     # USDC
             '0xdac17f958d2ee523a2206206994597c13d831ec7': 1.0,     # USDT
             '0x6b175474e89094c44da98b954eedeac495271d0f': 1.0,     # DAI
@@ -708,7 +707,7 @@ class DexParser:
         # Check price cache
         if address_lower in self.price_cache:
             price, cached_at = self.price_cache[address_lower]
-            if (datetime.now() - cached_at).seconds < 300:  # 5 min cache
+            if (datetime.now() - cached_at).total_seconds() < 300:  # 5 min cache
                 return price
 
         # Try CoinGecko

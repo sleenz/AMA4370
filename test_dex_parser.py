@@ -133,63 +133,75 @@ def test_known_routers():
 
 
 def test_price_cache_bug():
-    """Test 4: Price cache timing bug"""
+    """Test 4: Price cache timing fix verification"""
     print("\n" + "="*70)
-    print("TEST 4: Cache Timing Logic Bug Detection")
+    print("TEST 4: Cache Timing Logic Fix Verification")
     print("="*70)
 
-    print("\n   🔍 Checking cache expiration logic...")
-    print("\n   Found potential bug in dex_parser.py:")
-    print("   ")
-    print("   Line 653:")
-    print("   if (datetime.now() - info.last_updated).seconds < 300:")
-    print("                                           ^^^^^^^^")
-    print("   ")
-    print("   ❌ BUG: .seconds only returns seconds component (0-59)")
-    print("   Should be: .total_seconds() for actual elapsed time")
-    print("   ")
-    print("   Example:")
-    print("   - Time elapsed: 6 minutes = 360 seconds")
-    print("   - timedelta.seconds: 0 (only seconds component)")
-    print("   - timedelta.total_seconds(): 360 (correct)")
-    print("   ")
-    print("   Impact: Cache expires too quickly (every 59 seconds)")
-    print("   ")
-    print("   Same bug exists at:")
-    print("   - Line 711 (price cache)")
-    print("   ")
+    print("\n   🔍 Verifying cache expiration logic uses total_seconds()...")
 
-    return False  # Mark as failed to highlight the bug
+    with open('dex_parser.py', 'r') as f:
+        content = f.read()
+
+    # Check that code uses total_seconds() not .seconds
+    if '.total_seconds()' in content and content.count('.total_seconds()') >= 2:
+        # Verify specific lines
+        lines = content.split('\n')
+        line_653_ok = any('.total_seconds() < 300' in line for line in lines[650:656])
+        line_710_ok = any('.total_seconds() < 300' in line for line in lines[707:713])
+
+        if line_653_ok and line_710_ok:
+            print("   ✅ Line 653: Uses .total_seconds() correctly")
+            print("   ✅ Line 710: Uses .total_seconds() correctly")
+            print("   ")
+            print("   Cache expiration now works correctly:")
+            print("   - 5 minutes = 300 seconds (not 59 seconds)")
+            print("   - Proper cache lifetime improves performance")
+            return True
+        else:
+            print("   ⚠️  WARNING: .total_seconds() found but not in expected locations")
+            return False
+    else:
+        print("   ❌ BUG STILL EXISTS: Code uses .seconds instead of .total_seconds()")
+        return False
 
 
 def test_hardcoded_prices():
-    """Test 5: Hardcoded price issues"""
+    """Test 5: Hardcoded price fix verification"""
     print("\n" + "="*70)
-    print("TEST 5: Hardcoded Price Analysis")
+    print("TEST 5: Hardcoded Price Fix Verification")
     print("="*70)
 
     try:
         w3 = Web3(Web3.HTTPProvider('https://eth.llamarpc.com'))
         parser = DexParser(w3)
 
-        # Check hardcoded WETH price
+        # Check that WETH is NOT hardcoded
         weth_address = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'
 
-        print("\n   Checking hardcoded prices in _get_token_price()...")
-        print("\n   Found in dex_parser.py line 697:")
-        print("   '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 3400.0,  # WETH")
-        print("   ")
-        print("   ⚠️  WARNING: ETH price is hardcoded as $3,400")
-        print("   - Current ETH price: ~$3,100 (as of Nov 2025)")
-        print("   - This causes incorrect USD calculations for ETH pairs")
-        print("   ")
-        print("   Recommendation:")
-        print("   1. Remove hardcoded WETH price")
-        print("   2. Fetch real-time price from CoinGecko")
-        print("   3. Or use Chainlink oracle for on-chain prices")
-        print("   ")
+        print("\n   🔍 Checking KNOWN_PRICES dictionary...")
 
-        return False  # Mark as failed to highlight the issue
+        with open('dex_parser.py', 'r') as f:
+            content = f.read()
+
+        # Find KNOWN_PRICES section
+        known_prices_start = content.find('KNOWN_PRICES = {')
+        known_prices_end = content.find('}', known_prices_start)
+        known_prices_section = content[known_prices_start:known_prices_end]
+
+        if weth_address not in known_prices_section:
+            print("   ✅ WETH price NOT hardcoded (will fetch from CoinGecko)")
+            print("   ✅ Stablecoins still hardcoded at $1.00 (correct)")
+            print("   ")
+            print("   Benefits:")
+            print("   - Real-time ETH price from CoinGecko")
+            print("   - Accurate USD calculations for ETH pairs")
+            print("   - No manual price updates needed")
+            return True
+        else:
+            print("   ❌ BUG STILL EXISTS: WETH price is hardcoded")
+            print(f"   Found: {weth_address} in KNOWN_PRICES")
+            return False
 
     except Exception as e:
         print(f"❌ FAILED: {e}")
@@ -333,8 +345,8 @@ def main():
         ("Initialization", test_initialization),
         ("Router Detection", test_router_detection),
         ("Known Router Coverage", test_known_routers),
-        ("Cache Timing Bug", test_price_cache_bug),
-        ("Hardcoded Prices", test_hardcoded_prices),
+        ("Cache Timing Fix", test_price_cache_bug),
+        ("Hardcoded Price Fix", test_hardcoded_prices),
         ("Error Handling", test_error_handling),
         ("Protocol Coverage", test_protocol_coverage),
         ("Action Classification", test_action_classification),
