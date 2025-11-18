@@ -369,13 +369,27 @@ def fetch_wallet_transactions(
     # Get native token price for gas fee calculation
     native_price = client.get_current_price()
 
+    # Limit transactions to avoid spending hours on whale wallets
+    MAX_TRANSACTIONS = 2000
+    if len(raw_txns) > MAX_TRANSACTIONS:
+        logger.warning(
+            f"{address[:10]}...: Limiting to {MAX_TRANSACTIONS} most recent transactions "
+            f"(wallet has {len(raw_txns)} total)"
+        )
+        raw_txns = raw_txns[:MAX_TRANSACTIONS]
+
     # Parse transactions (use cache when available)
     trades = []
     newly_parsed = []
     skipped_no_dex = 0
     skipped_failed = 0
+    total_txns = len(raw_txns)
 
-    for tx in raw_txns:
+    for i, tx in enumerate(raw_txns):
+        # Progress logging every 200 transactions
+        if (i + 1) % 200 == 0:
+            logger.info(f"{address[:10]}...: Processing {i+1}/{total_txns} transactions...")
+
         try:
             # Skip failed transactions
             if tx.get('txreceipt_status') == '0':
