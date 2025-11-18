@@ -461,7 +461,7 @@ class BSCScanClient(BlockchainAPIClient):
             return 0.0
 
 
-def load_config(config_path: str = "config/api_keys.json") -> Dict[str, Any]:
+def load_config(config_path: str = "config/api_keys.json", require_bsc: bool = False) -> Dict[str, Any]:
     """
     Load API keys and configuration from JSON file.
 
@@ -472,6 +472,7 @@ def load_config(config_path: str = "config/api_keys.json") -> Dict[str, Any]:
 
     Args:
         config_path: Path to config file
+        require_bsc: Whether to require bscscan_api_key (default False for Ethereum-only analysis)
 
     Returns:
         dict: Configuration with keys 'etherscan_api_key', 'bscscan_api_key'
@@ -502,7 +503,10 @@ def load_config(config_path: str = "config/api_keys.json") -> Dict[str, Any]:
         config['bscscan_api_key'] = os.environ.get('BSCSCAN_API_KEY', '')
 
     # Validate required keys
-    required_keys = ['etherscan_api_key', 'bscscan_api_key']
+    required_keys = ['etherscan_api_key']
+    if require_bsc:
+        required_keys.append('bscscan_api_key')
+
     missing_keys = [key for key in required_keys if not config.get(key)]
 
     if missing_keys:

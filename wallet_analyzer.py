@@ -67,10 +67,15 @@ from dex_parser import DexParser, SwapInfo
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Reduce noise from verbose libraries
+logging.getLogger('web3').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('dex_parser').setLevel(logging.INFO)
 
 
 # Constants
