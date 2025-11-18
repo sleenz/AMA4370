@@ -58,6 +58,44 @@ class WalletMetrics:
     unique_tokens: int
     days_since_last_activity: int
     is_contract: bool
+    dex_router_pct: float = 0.0  # Percentage of transactions to DEX routers
+
+
+# Known DEX router addresses (lowercase) for filtering real traders
+# Only wallets that interact with these routers are considered DEX traders
+KNOWN_DEX_ROUTERS = {
+    # Uniswap
+    '0x7a250d5630b4cf539739df2c5dacb4c659f2488d',  # Uniswap V2
+    '0xe592427a0aece92de3edee1f18e0157c05861564',  # Uniswap V3
+    '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45',  # Uniswap V3 Router2
+    '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad',  # Uniswap Universal Router
+    '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b',  # Uniswap Universal Router (old)
+    '0x4c60051384bd2d3c01bfc845cf5f4b44bcbe9de5',  # Uniswap Universal Router V2
+    # Sushiswap
+    '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f',  # Sushiswap
+    # 1inch
+    '0x1111111254fb6c44bac0bed2854e76f90643097d',  # 1inch V3
+    '0x1111111254eeb25477b68fb85ed929f73a960582',  # 1inch V5
+    '0x111111125421ca6dc452d289314280a0f8842a65',  # 1inch V6
+    # 0x Protocol
+    '0xdef1c0ded9bec7f1a1670819833240f027b25eff',  # 0x Exchange Proxy
+    # Aggregators & Others
+    '0x881d40237659c251811cec9c364ef91dc08d300c',  # MetaMask Swap
+    '0x9008d19f58aabd9ed0d60971565aa8510560ab41',  # CoW Protocol
+    '0x6131b5fae19ea4f9d964eac0408e4408b66337b5',  # Kyber
+    '0xdef171fe48cf0115b1d80b88dc8eab59176fee57',  # ParaSwap V5
+    '0x216b4b4ba9f3e719726886d34a177484278bfcae',  # ParaSwap V4
+    # Curve
+    '0x99a58482bd75cbab83b27ec03ca68ff489b5788f',  # Curve Router
+    # Balancer
+    '0xba12222222228d8ba445958a75a0704d566bf2c8',  # Balancer V2 Vault
+    # PancakeSwap (for BSC)
+    '0x10ed43c718714eb63d5aa57b78b54704e256024e',  # PancakeSwap V2
+    '0x13f4ea83d0bd40e75c8222255bc855a974568dd4',  # PancakeSwap V3
+    # Trading Bots (legitimate)
+    '0x3328f7f4a1d1c57c35df56bbf0c9dcafca309c49',  # Banana Gun
+    '0x80a64c6d7f12c47b7c66c5b4e20e72bc1fcd5d9e',  # Maestro
+}
 
 
 class APIError(Exception):
@@ -657,6 +695,16 @@ def fetch_wallet_metrics(
 
     days_since_last = (datetime.now() - last_activity).days
 
+    # Calculate DEX router interaction percentage
+    # This filters out exchange deposit wallets and transfer bots
+    dex_router_count = 0
+    for tx in transactions:
+        to_addr = tx.get('to', '').lower()
+        if to_addr in KNOWN_DEX_ROUTERS:
+            dex_router_count += 1
+
+    dex_router_pct = (dex_router_count / total_trades * 100) if total_trades > 0 else 0.0
+
     return WalletMetrics(
         address=address,
         chain=client.chain_name,
@@ -665,7 +713,8 @@ def fetch_wallet_metrics(
         last_activity=last_activity,
         unique_tokens=unique_tokens,
         days_since_last_activity=days_since_last,
-        is_contract=is_contract
+        is_contract=is_contract,
+        dex_router_pct=dex_router_pct
     )
 
 
@@ -673,11 +722,12 @@ def apply_filters(wallet_metrics: WalletMetrics) -> bool:
     """
     Apply filtering criteria to wallet metrics.
 
-    Filter criteria (RELAXED):
+    Filter criteria:
         - total_trades >= 30 (was 50)
         - total_volume_usd >= 10000 (was 50000)
         - is_contract == False
         - days_since_last_activity <= 14 (was 7)
+        - dex_router_pct >= 10% (NEW - filters exchange deposit wallets)
 
     Args:
         wallet_metrics: Wallet metrics from fetch_wallet_metrics()
@@ -701,7 +751,19 @@ def apply_filters(wallet_metrics: WalletMetrics) -> bool:
         logger.debug(f"Filter failed: {wallet_metrics.address[:10]}... last active {wallet_metrics.days_since_last_activity} days ago")
         return False
 
-    logger.debug(f"Filter passed: {wallet_metrics.address[:10]}... ✓")
+    # NEW: Filter for real DEX traders (not exchange deposit wallets)
+    # Minimum 10% of transactions must be to known DEX routers
+    if wallet_metrics.dex_router_pct < 10.0:
+        logger.debug(
+            f"Filter failed: {wallet_metrics.address[:10]}... only {wallet_metrics.dex_router_pct:.1f}% DEX router txns "
+            f"(likely exchange deposit wallet)"
+        )
+        return False
+
+    logger.info(
+        f"Filter passed: {wallet_metrics.address[:10]}... ✓ "
+        f"({wallet_metrics.dex_router_pct:.1f}% DEX, {wallet_metrics.total_trades} trades)"
+    )
     return True
 
 
@@ -772,10 +834,10 @@ def export_to_csv(
 
     CSV Columns:
         address, chain, total_trades, total_volume_usd,
-        last_activity, unique_tokens, days_since_last_activity
+        last_activity, unique_tokens, days_since_last_activity, dex_router_pct
     """
-    # Sort by volume descending
-    sorted_wallets = sorted(wallets, key=lambda w: w.total_volume_usd, reverse=True)
+    # Sort by DEX router percentage descending (prioritize active DEX traders)
+    sorted_wallets = sorted(wallets, key=lambda w: w.dex_router_pct, reverse=True)
 
     # Write CSV
     with open(filename, 'w', newline='', encoding='utf-8') as f:
@@ -789,7 +851,8 @@ def export_to_csv(
             'total_volume_usd',
             'last_activity',
             'unique_tokens',
-            'days_since_last_activity'
+            'days_since_last_activity',
+            'dex_router_pct'
         ])
 
         # Data rows
@@ -801,7 +864,8 @@ def export_to_csv(
                 f"{wallet.total_volume_usd:.2f}",
                 wallet.last_activity.strftime('%Y-%m-%d %H:%M:%S'),
                 wallet.unique_tokens,
-                wallet.days_since_last_activity
+                wallet.days_since_last_activity,
+                f"{wallet.dex_router_pct:.1f}"
             ])
 
     logger.info(f"Exported {len(wallets)} wallets to {filename}")
