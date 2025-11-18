@@ -449,6 +449,36 @@ def create_token_metadata_table(cursor: sqlite3.Cursor) -> None:
     logger.info("Created token_metadata table with 1 index")
 
 
+def create_monitoring_state_table(cursor: sqlite3.Cursor) -> None:
+    """
+    Create the monitoring_state table for tracking wallet monitoring progress.
+
+    This table tracks the last checked block and timestamp for each wallet,
+    allowing the monitor to resume from where it left off.
+
+    Columns:
+        wallet_address: Wallet address (unique, references wallets)
+        last_checked_block: Last blockchain block that was checked
+        last_checked_timestamp: Timestamp of last check
+        consecutive_errors: Number of consecutive errors (for backoff)
+        total_transactions_found: Running total of transactions found
+
+    Args:
+        cursor: SQLite database cursor
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS monitoring_state (
+            wallet_address TEXT PRIMARY KEY,
+            last_checked_block INTEGER NOT NULL,
+            last_checked_timestamp TIMESTAMP NOT NULL,
+            consecutive_errors INTEGER DEFAULT 0,
+            total_transactions_found INTEGER DEFAULT 0
+        )
+    """)
+
+    logger.info("Created monitoring_state table")
+
+
 def enable_foreign_keys(conn: sqlite3.Connection) -> None:
     """
     Enable foreign key constraint enforcement in SQLite.
@@ -528,12 +558,13 @@ def init_database(db_path: str = "wallet_trading.db") -> sqlite3.Connection:
         create_open_positions_table(cursor)
         create_cached_transactions_table(cursor)
         create_token_metadata_table(cursor)
+        create_monitoring_state_table(cursor)
 
         # Commit changes
         conn.commit()
 
         logger.info(f"Database initialization complete: {db_path}")
-        logger.info("Schema created: 6 tables, 17 indexes, 2 foreign key constraints")
+        logger.info("Schema created: 7 tables, 17 indexes, 2 foreign key constraints")
 
         return conn
 

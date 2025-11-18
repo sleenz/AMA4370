@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 
 
-def import_wallets(csv_path: str = "discovered_wallets.csv", db_path: str = "copy_trading.db"):
+def import_wallets(csv_path: str = "discovered_wallets.csv", db_path: str = "wallet_trading.db"):
     """Import wallets from CSV into database."""
 
     # Read CSV
