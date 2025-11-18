@@ -339,12 +339,15 @@ def fetch_wallet_transactions(
         RPC_PROVIDERS = [
             'https://eth.llamarpc.com',
             'https://rpc.ankr.com/eth',
-            'https://ethereum.publicnode.com'
+            'https://ethereum.publicnode.com',
+            'https://1rpc.io/eth',
+            'https://eth.drpc.org',
+            'https://cloudflare-eth.com',
         ]
 
         for rpc_url in RPC_PROVIDERS:
             try:
-                w3 = Web3(Web3.HTTPProvider(rpc_url))
+                w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
                 if w3.is_connected():
                     logger.debug(f"Connected to RPC: {rpc_url}")
                     break
@@ -1346,16 +1349,27 @@ def main() -> None:
         logger.info("API clients initialized")
 
         # Step 2b: Initialize Web3 and DexParser ONCE (major optimization)
+        # Check for custom RPC URL in config first
+        custom_rpc = config.get('ethereum_rpc_url')
+
         RPC_PROVIDERS = [
             'https://eth.llamarpc.com',
             'https://rpc.ankr.com/eth',
-            'https://ethereum.publicnode.com'
+            'https://ethereum.publicnode.com',
+            'https://1rpc.io/eth',
+            'https://eth.drpc.org',
+            'https://cloudflare-eth.com',
         ]
+
+        # Prioritize custom RPC if provided
+        if custom_rpc:
+            RPC_PROVIDERS.insert(0, custom_rpc)
 
         w3 = None
         for rpc_url in RPC_PROVIDERS:
             try:
-                w3 = Web3(Web3.HTTPProvider(rpc_url))
+                # Add timeout to prevent hanging
+                w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
                 if w3.is_connected():
                     logger.info(f"Connected to RPC: {rpc_url}")
                     break
@@ -1367,6 +1381,7 @@ def main() -> None:
 
         if not w3:
             logger.error("All RPC providers failed, cannot parse DEX swaps")
+            logger.error("Add 'ethereum_rpc_url' to config/api_keys.json with your own RPC URL")
             return
 
         # Initialize DEX parser once
