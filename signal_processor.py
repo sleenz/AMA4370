@@ -743,10 +743,18 @@ class SignalProcessor:
         temp_position = self._calculate_position(signal, token_mapping)
         wallet_allocation_pct = self._get_wallet_allocation(signal.wallet_address)
 
-        # Get wallet rank from database
+        # Get wallet rank from database (calculate ordinal rank from rank_score)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT rank FROM wallets WHERE address = ?", (signal.wallet_address.lower(),))
+        cursor.execute("""
+            SELECT (
+                SELECT COUNT(*) + 1
+                FROM wallets w2
+                WHERE w2.rank_score > w1.rank_score AND w2.is_active = 1
+            ) as rank
+            FROM wallets w1
+            WHERE w1.address = ? AND w1.is_active = 1
+        """, (signal.wallet_address.lower(),))
         row = cursor.fetchone()
         conn.close()
         wallet_rank = row[0] if row else 999  # Default to low rank if not found
@@ -1146,9 +1154,15 @@ class SignalProcessor:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        # Calculate ordinal rank from rank_score
         cursor.execute("""
-            SELECT rank FROM wallets
-            WHERE address = ? AND is_active = 1
+            SELECT (
+                SELECT COUNT(*) + 1
+                FROM wallets w2
+                WHERE w2.rank_score > w1.rank_score AND w2.is_active = 1
+            ) as rank
+            FROM wallets w1
+            WHERE w1.address = ? AND w1.is_active = 1
         """, (wallet_address.lower(),))
 
         row = cursor.fetchone()

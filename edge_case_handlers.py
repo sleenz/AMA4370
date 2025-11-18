@@ -175,7 +175,7 @@ class WalletBalanceEstimator:
 
         cursor.execute("""
             SELECT
-                SUM(amount_usd) as total_volume,
+                SUM(value_usd) as total_volume,
                 COUNT(*) as trade_count,
                 MAX(timestamp) as last_trade
             FROM wallet_transactions
@@ -228,7 +228,7 @@ class WalletBalanceEstimator:
 
         cursor.execute("""
             SELECT
-                MAX(amount_usd) as largest_trade,
+                MAX(value_usd) as largest_trade,
                 COUNT(*) as trade_count,
                 MAX(timestamp) as last_trade
             FROM wallet_transactions
@@ -277,7 +277,7 @@ class WalletBalanceEstimator:
 
         cursor.execute("""
             SELECT
-                AVG(amount_usd) as avg_size,
+                AVG(value_usd) as avg_size,
                 COUNT(*) as trade_count
             FROM wallet_transactions
             WHERE wallet_id = (SELECT id FROM wallets WHERE address = ?)
@@ -316,8 +316,15 @@ class WalletBalanceEstimator:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        # Calculate ordinal rank from rank_score
         cursor.execute("""
-            SELECT rank FROM wallets WHERE address = ?
+            SELECT (
+                SELECT COUNT(*) + 1
+                FROM wallets w2
+                WHERE w2.rank_score > w1.rank_score AND w2.is_active = 1
+            ) as rank
+            FROM wallets w1
+            WHERE w1.address = ?
         """, (wallet_address,))
 
         row = cursor.fetchone()
@@ -791,8 +798,15 @@ class SignalQueue:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
+            # Calculate ordinal rank from rank_score
             cursor.execute("""
-                SELECT rank FROM wallets WHERE address = ?
+                SELECT (
+                    SELECT COUNT(*) + 1
+                    FROM wallets w2
+                    WHERE w2.rank_score > w1.rank_score AND w2.is_active = 1
+                ) as rank
+                FROM wallets w1
+                WHERE w1.address = ?
             """, (wallet_address.lower(),))
 
             row = cursor.fetchone()
