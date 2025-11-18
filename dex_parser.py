@@ -493,6 +493,17 @@ class DexParser:
                         'internal server error'
                     ])
 
+                    # Non-retryable errors - fail fast
+                    is_not_retryable = any(err in error_msg for err in [
+                        '400', 'bad request',  # Invalid request / old tx not in archive
+                        '404', 'not found',
+                        'invalid', 'does not exist'
+                    ])
+
+                    if is_not_retryable:
+                        # Fail immediately - don't retry or rotate providers
+                        raise e
+
                     if is_retryable and attempt < self.max_retries - 1:
                         # Quick retry with minimal delay
                         delay = self.retry_delay * (1.5 ** attempt)  # Faster backoff: 0.5s, 0.75s

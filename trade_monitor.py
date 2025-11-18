@@ -948,10 +948,11 @@ class TradeMonitor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            # Get current block for new wallets (7 days lookback = ~50,000 blocks)
+            # Get current block for new wallets (1 day lookback = ~7,200 blocks)
+            # Note: Free RPC providers don't have archive data, so we use recent blocks only
             try:
                 current_block = self.fetcher.get_latest_block()
-                default_start_block = max(1, current_block - 50000)  # Start from 7 days ago
+                default_start_block = max(1, current_block - 7200)  # Start from 1 day ago
             except Exception as e:
                 logger.warning(f"Could not fetch current block, using default: {e}")
                 default_start_block = 1  # Fallback to block 1
