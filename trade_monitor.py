@@ -844,16 +844,41 @@ class TradeMonitor:
         # Load configuration
         config = load_config(config_path)
 
+        # RPC providers with fallback (config can override defaults)
+        default_rpc_providers = [
+            'https://eth.drpc.org',
+            'https://rpc.ankr.com/eth',
+            'https://ethereum.publicnode.com',
+            'https://1rpc.io/eth',
+            'https://eth.llamarpc.com',
+            'https://cloudflare-eth.com',
+        ]
+
+        # Get RPC providers from config or use defaults
+        rpc_providers = config.get('rpc_providers', default_rpc_providers)
+        web3_provider = config.get('web3_provider_uri')
+
+        # If single provider specified, add it to front of list
+        if web3_provider and web3_provider not in rpc_providers:
+            rpc_providers.insert(0, web3_provider)
+
         # Initialize Web3 connection for DEX parsing
-        web3_provider = config.get('web3_provider_uri', 'https://eth.llamarpc.com')
-        try:
-            self.w3 = Web3(Web3.HTTPProvider(web3_provider))
-            if not self.w3.is_connected:
-                logger.warning(f"Web3 connection failed to {web3_provider}, DEX parsing will be limited")
-                self.w3 = None
-        except Exception as e:
-            logger.warning(f"Failed to initialize Web3: {e}, DEX parsing will be limited")
-            self.w3 = None
+        self.w3 = None
+        for provider in rpc_providers:
+            try:
+                w3 = Web3(Web3.HTTPProvider(provider, request_kwargs={'timeout': 30}))
+                if w3.is_connected():
+                    self.w3 = w3
+                    logger.info(f"Web3 connected to: {provider}")
+                    break
+                else:
+                    logger.debug(f"Failed to connect to {provider}")
+            except Exception as e:
+                logger.debug(f"Error connecting to {provider}: {e}")
+                continue
+
+        if not self.w3:
+            logger.warning("All RPC providers failed, DEX parsing will be limited")
 
         # Initialize components
         self.fetcher = TransactionFetcher(
@@ -863,16 +888,30 @@ class TradeMonitor:
             rate_limit=config.get('rate_limit', 5.0)
         )
 
-        # Initialize comprehensive DEX parser
+        # Initialize comprehensive DEX parser with RPC fallback
         if self.w3:
             self.parser = DexParser(
                 w3=self.w3,
                 etherscan_api_key=config.get('etherscan_api_key'),
-                coingecko_api_key=config.get('coingecko_api_key')
+                coingecko_api_key=config.get('coingecko_api_key'),
+                rpc_providers=rpc_providers,
+                max_retries=3,
+                retry_delay=1.0
             )
         else:
-            logger.warning("DEX parser not initialized (no Web3 connection)")
-            self.parser = None
+            # Try initializing DexParser without pre-connected Web3 - it will handle connections
+            try:
+                self.parser = DexParser(
+                    etherscan_api_key=config.get('etherscan_api_key'),
+                    coingecko_api_key=config.get('coingecko_api_key'),
+                    rpc_providers=rpc_providers,
+                    max_retries=3,
+                    retry_delay=1.0
+                )
+                logger.info("DEX parser initialized with internal RPC management")
+            except Exception as e:
+                logger.warning(f"DEX parser not initialized: {e}")
+                self.parser = None
 
         self.leverage_detector = LeverageDetector()
         self.signal_emitter = SignalEmitter(
@@ -893,8 +932,9 @@ class TradeMonitor:
         logger.info(f"Check interval: {check_interval}s")
         logger.info(f"Paper mode: {paper_mode}")
         logger.info(f"API: Etherscan V2 (chainid={config.get('chainid', 1)})")
-        logger.info(f"Web3: {'Connected' if self.w3 and self.w3.is_connected else 'Not connected'}")
-        logger.info(f"DEX Parser: {'Enabled' if self.parser else 'Disabled'}")
+        logger.info(f"Web3: {'Connected' if self.w3 and self.w3.is_connected() else 'Not connected'}")
+        logger.info(f"RPC Providers: {len(rpc_providers)} configured with fallback")
+        logger.info(f"DEX Parser: {'Enabled with retry' if self.parser else 'Disabled'}")
 
     def load_tracked_wallets(self) -> List[WalletState]:
         """
