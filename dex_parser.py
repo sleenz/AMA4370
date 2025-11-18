@@ -348,12 +348,22 @@ class DexParser:
                 return None
 
             # Route to appropriate parser
+            # Aggregators (1inch, 0x, MetaMask, etc.) route through V2/V3 pools
+            # so we try both parsers
             if 'v2' in router_type:
                 return self._parse_v2_swap(tx, receipt, wallet_address, router_type)
             elif 'v3' in router_type:
                 return self._parse_v3_swap(tx, receipt, wallet_address, router_type)
             else:
-                logger.warning(f"Unknown router type: {router_type}")
+                # For aggregators and other protocols, try V3 first then V2
+                # They emit standard Uniswap Swap events from the pools they route through
+                result = self._parse_v3_swap(tx, receipt, wallet_address, router_type)
+                if result:
+                    return result
+                result = self._parse_v2_swap(tx, receipt, wallet_address, router_type)
+                if result:
+                    return result
+                logger.debug(f"No swap events found for {router_type} transaction")
                 return None
 
         except TransactionNotFound:
