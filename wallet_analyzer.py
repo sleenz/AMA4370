@@ -268,7 +268,9 @@ def fetch_wallet_transactions(
     address: str,
     days: int = 90,
     use_cache: bool = True,
-    db_path: str = 'wallet_trading.db'
+    db_path: str = 'wallet_trading.db',
+    w3: Web3 = None,
+    dex_parser_instance: DexParser = None
 ) -> List[Trade]:
     """
     Fetch and parse DEX swaps with intelligent caching (3-10x performance improvement).
@@ -286,6 +288,8 @@ def fetch_wallet_transactions(
         days: Days of history to fetch
         use_cache: Use transaction cache (default: True, disable for testing)
         db_path: Path to database with cache tables
+        w3: Pre-initialized Web3 instance (optional, will create if not provided)
+        dex_parser_instance: Pre-initialized DexParser (optional, will create if not provided)
 
     Returns:
         List[Trade]: Parsed DEX swap trades with USD values and gas fees
@@ -329,42 +333,44 @@ def fetch_wallet_transactions(
         except sqlite3.Error as e:
             logger.warning(f"Cache lookup failed: {e}, proceeding without cache")
 
-    # OPTIMIZATION 2: RPC fallback for reliability
-    RPC_PROVIDERS = [
-        'https://eth.llamarpc.com',
-        'https://rpc.ankr.com/eth',
-        'https://ethereum.publicnode.com'
-    ]
+    # Use pre-initialized Web3 or create new one
+    if w3 is None:
+        # OPTIMIZATION 2: RPC fallback for reliability
+        RPC_PROVIDERS = [
+            'https://eth.llamarpc.com',
+            'https://rpc.ankr.com/eth',
+            'https://ethereum.publicnode.com'
+        ]
 
-    w3 = None
-    for rpc_url in RPC_PROVIDERS:
+        for rpc_url in RPC_PROVIDERS:
+            try:
+                w3 = Web3(Web3.HTTPProvider(rpc_url))
+                if w3.is_connected():
+                    logger.debug(f"Connected to RPC: {rpc_url}")
+                    break
+                else:
+                    w3 = None
+            except Exception as e:
+                logger.debug(f"RPC {rpc_url} failed: {e}")
+                continue
+
+        if not w3:
+            logger.error("All RPC providers failed, cannot parse DEX swaps")
+            return []
+
+    # Use pre-initialized DEX parser or create new one
+    dex_parser = dex_parser_instance
+    if dex_parser is None:
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc_url))
-            if w3.is_connected():
-                logger.debug(f"Connected to RPC: {rpc_url}")
-                break
-            else:
-                w3 = None
+            config = load_config('config.json')
+            dex_parser = DexParser(
+                w3=w3,
+                etherscan_api_key=config.get('etherscan_api_key'),
+                coingecko_api_key=config.get('coingecko_api_key')
+            )
         except Exception as e:
-            logger.debug(f"RPC {rpc_url} failed: {e}")
-            continue
-
-    if not w3:
-        logger.error("All RPC providers failed, cannot parse DEX swaps")
-        return []
-
-    # Initialize DEX parser
-    dex_parser = None
-    try:
-        config = load_config('config.json')
-        dex_parser = DexParser(
-            w3=w3,
-            etherscan_api_key=config.get('etherscan_api_key'),
-            coingecko_api_key=config.get('coingecko_api_key')
-        )
-    except Exception as e:
-        logger.error(f"DEX parser initialization failed: {e}")
-        return []
+            logger.error(f"DEX parser initialization failed: {e}")
+            return []
 
     # Get native token price for gas fee calculation
     native_price = client.get_current_price()
@@ -1007,7 +1013,9 @@ def calculate_metrics(
 def analyze_wallet(
     wallet_data: Dict[str, str],
     eth_client: EtherscanClient,
-    bsc_client: BSCScanClient
+    bsc_client: BSCScanClient,
+    w3: Web3 = None,
+    dex_parser: DexParser = None
 ) -> Optional[PerformanceMetrics]:
     """
     Analyze a single wallet: fetch trades, match, calculate metrics.
@@ -1016,6 +1024,8 @@ def analyze_wallet(
         wallet_data: Dict with 'address' and 'chain' keys
         eth_client: Etherscan API client
         bsc_client: BSCScan API client
+        w3: Pre-initialized Web3 instance
+        dex_parser: Pre-initialized DexParser instance
 
     Returns:
         PerformanceMetrics: Calculated metrics, or None if analysis fails
@@ -1032,7 +1042,7 @@ def analyze_wallet(
 
     try:
         # Step 1: Fetch transactions
-        trades = fetch_wallet_transactions(client, address, days=90)
+        trades = fetch_wallet_transactions(client, address, days=90, w3=w3, dex_parser_instance=dex_parser)
 
         if not trades:
             logger.warning(f"{address[:10]}...: No trades found")
@@ -1329,17 +1339,60 @@ def main() -> None:
             rate_limit=config['rate_limit_per_second']
         )
         bsc_client = BSCScanClient(
-            api_key=config['bscscan_api_key'],
+            api_key=config.get('bscscan_api_key', ''),
             rate_limit=config['rate_limit_per_second']
         )
 
         logger.info("API clients initialized")
 
-        # Step 3: Analyze all wallets
-        metrics_list = []
+        # Step 2b: Initialize Web3 and DexParser ONCE (major optimization)
+        RPC_PROVIDERS = [
+            'https://eth.llamarpc.com',
+            'https://rpc.ankr.com/eth',
+            'https://ethereum.publicnode.com'
+        ]
 
-        for wallet_data in wallets:
-            metrics = analyze_wallet(wallet_data, eth_client, bsc_client)
+        w3 = None
+        for rpc_url in RPC_PROVIDERS:
+            try:
+                w3 = Web3(Web3.HTTPProvider(rpc_url))
+                if w3.is_connected():
+                    logger.info(f"Connected to RPC: {rpc_url}")
+                    break
+                else:
+                    w3 = None
+            except Exception as e:
+                logger.debug(f"RPC {rpc_url} failed: {e}")
+                continue
+
+        if not w3:
+            logger.error("All RPC providers failed, cannot parse DEX swaps")
+            return
+
+        # Initialize DEX parser once
+        dex_parser = None
+        try:
+            dex_config = load_config('config.json')
+            dex_parser = DexParser(
+                w3=w3,
+                etherscan_api_key=dex_config.get('etherscan_api_key'),
+                coingecko_api_key=dex_config.get('coingecko_api_key')
+            )
+            logger.info("DexParser initialized (shared across all wallets)")
+        except Exception as e:
+            logger.error(f"DEX parser initialization failed: {e}")
+            return
+
+        # Step 3: Analyze all wallets with progress tracking
+        metrics_list = []
+        total_wallets = len(wallets)
+
+        for i, wallet_data in enumerate(wallets):
+            # Progress every 10 wallets
+            if (i + 1) % 10 == 0:
+                logger.info(f"Progress: {i+1}/{total_wallets} wallets analyzed...")
+
+            metrics = analyze_wallet(wallet_data, eth_client, bsc_client, w3, dex_parser)
             if metrics:
                 metrics_list.append(metrics)
 
