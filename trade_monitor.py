@@ -889,14 +889,15 @@ class TradeMonitor:
         )
 
         # Initialize comprehensive DEX parser with RPC fallback
+        # Using fast retry settings: 2 retries with 0.5s base delay
         if self.w3:
             self.parser = DexParser(
                 w3=self.w3,
                 etherscan_api_key=config.get('etherscan_api_key'),
                 coingecko_api_key=config.get('coingecko_api_key'),
                 rpc_providers=rpc_providers,
-                max_retries=3,
-                retry_delay=1.0
+                max_retries=2,
+                retry_delay=0.5
             )
         else:
             # Try initializing DexParser without pre-connected Web3 - it will handle connections
@@ -905,8 +906,8 @@ class TradeMonitor:
                     etherscan_api_key=config.get('etherscan_api_key'),
                     coingecko_api_key=config.get('coingecko_api_key'),
                     rpc_providers=rpc_providers,
-                    max_retries=3,
-                    retry_delay=1.0
+                    max_retries=2,
+                    retry_delay=0.5
                 )
                 logger.info("DEX parser initialized with internal RPC management")
             except Exception as e:

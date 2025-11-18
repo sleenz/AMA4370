@@ -319,6 +319,9 @@ class DexParser:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.provider_failures: Dict[str, int] = {}  # Track failures per provider
+        self.unhealthy_providers: set = set()  # Providers marked as down
+        self.consecutive_failures = 0  # Track consecutive tx failures
+        self.max_consecutive_failures = 5  # Warn after this many failures
 
         # Initialize Web3 with first provider or use provided instance
         if w3 is not None:
@@ -329,7 +332,8 @@ class DexParser:
                 if provider_uri and provider_uri not in self.rpc_providers:
                     self.rpc_providers.insert(0, provider_uri)
         else:
-            self._connect_to_provider(0)
+            # Find first healthy provider
+            self._find_healthy_provider()
 
         self.etherscan_api_key = etherscan_api_key
         self.coingecko_api_key = coingecko_api_key
@@ -344,7 +348,48 @@ class DexParser:
         self.coingecko_rate_limit = 1.2  # 50 calls/min = 1 call per 1.2s
 
         logger.info(f"DexParser initialized with {len(self.rpc_providers)} RPC providers")
-        logger.debug(f"Primary RPC: {self.rpc_providers[0]}")
+        if hasattr(self, 'w3') and self.w3:
+            logger.debug(f"Primary RPC: {self.rpc_providers[self.current_provider_index]}")
+
+    def _find_healthy_provider(self) -> bool:
+        """
+        Find first healthy RPC provider by testing each one.
+
+        Returns:
+            bool: True if healthy provider found
+        """
+        logger.info("Checking RPC provider health...")
+
+        for i, provider in enumerate(self.rpc_providers):
+            if provider in self.unhealthy_providers:
+                continue
+
+            try:
+                w3 = Web3(Web3.HTTPProvider(
+                    provider,
+                    request_kwargs={'timeout': 10}  # Quick timeout for health check
+                ))
+
+                # Quick health check - get block number
+                if w3.is_connected():
+                    block = w3.eth.block_number
+                    if block > 0:
+                        self.w3 = w3
+                        self.current_provider_index = i
+                        logger.info(f"✅ Healthy provider found: {provider} (block {block:,})")
+                        return True
+
+                logger.debug(f"Provider {provider} failed health check")
+                self.unhealthy_providers.add(provider)
+
+            except Exception as e:
+                logger.debug(f"Provider {provider} unhealthy: {e}")
+                self.unhealthy_providers.add(provider)
+
+        logger.error("❌ No healthy RPC providers found!")
+        # Fallback to first provider anyway
+        self._connect_to_provider(0)
+        return False
 
     def _connect_to_provider(self, index: int) -> bool:
         """
@@ -404,6 +449,8 @@ class DexParser:
         """
         Execute a Web3 function with retry and provider rotation.
 
+        Optimized for speed: quick retries with fast provider rotation.
+
         Args:
             func: Function to execute
             *args: Positional arguments
@@ -417,11 +464,22 @@ class DexParser:
         """
         last_error = None
         providers_tried = 0
+        healthy_providers = [p for p in self.rpc_providers if p not in self.unhealthy_providers]
 
-        while providers_tried < len(self.rpc_providers):
+        if not healthy_providers:
+            # Reset unhealthy list if all providers marked as down
+            self.unhealthy_providers.clear()
+            healthy_providers = self.rpc_providers
+
+        max_providers_to_try = min(3, len(healthy_providers))  # Try at most 3 providers per call
+
+        while providers_tried < max_providers_to_try:
             for attempt in range(self.max_retries):
                 try:
-                    return func(*args, **kwargs)
+                    result = func(*args, **kwargs)
+                    # Success - reset consecutive failures
+                    self.consecutive_failures = 0
+                    return result
                 except Exception as e:
                     last_error = e
                     error_msg = str(e).lower()
@@ -436,13 +494,16 @@ class DexParser:
                     ])
 
                     if is_retryable and attempt < self.max_retries - 1:
-                        # Exponential backoff
-                        delay = self.retry_delay * (2 ** attempt)
-                        logger.debug(f"Retry {attempt + 1}/{self.max_retries} after {delay:.1f}s: {e}")
+                        # Quick retry with minimal delay
+                        delay = self.retry_delay * (1.5 ** attempt)  # Faster backoff: 0.5s, 0.75s
                         time.sleep(delay)
                         continue
                     elif is_retryable:
-                        # Max retries reached, try next provider
+                        # Mark current provider as potentially unhealthy
+                        current_url = self.rpc_providers[self.current_provider_index]
+                        self.provider_failures[current_url] = self.provider_failures.get(current_url, 0) + 1
+                        if self.provider_failures[current_url] >= 3:
+                            self.unhealthy_providers.add(current_url)
                         break
                     else:
                         # Non-retryable error (e.g., transaction not found)
@@ -450,10 +511,15 @@ class DexParser:
 
             # Rotate to next provider
             providers_tried += 1
-            if providers_tried < len(self.rpc_providers):
-                logger.warning(f"Rotating RPC provider after failures")
+            if providers_tried < max_providers_to_try:
                 if not self._rotate_provider():
                     break
+
+        # Track consecutive failures
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.max_consecutive_failures:
+            if self.consecutive_failures == self.max_consecutive_failures:
+                logger.warning(f"⚠️ {self.consecutive_failures} consecutive RPC failures - provider issues likely")
 
         # All providers failed
         raise last_error if last_error else Exception("All RPC providers exhausted")
