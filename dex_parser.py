@@ -92,12 +92,27 @@ class DexParser:
     Multi-protocol DEX transaction parser.
 
     Decodes swap transactions from Uniswap V2/V3 and PancakeSwap V2/V3.
+
+    Features:
+        - Multiple RPC provider fallback
+        - Automatic retry with exponential backoff
+        - Provider rotation on failures
     """
 
     # Event signatures (topic[0] for logs)
     V2_SWAP_TOPIC = '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822'
     V3_SWAP_TOPIC = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67'
     TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+
+    # Default RPC providers with fallback order
+    DEFAULT_RPC_PROVIDERS = [
+        'https://eth.drpc.org',
+        'https://rpc.ankr.com/eth',
+        'https://ethereum.publicnode.com',
+        'https://1rpc.io/eth',
+        'https://eth.llamarpc.com',
+        'https://cloudflare-eth.com',
+    ]
 
     # Function selectors
     V2_SWAP_EXACT_TOKENS = '0x38ed1739'  # swapExactTokensForTokens
@@ -280,19 +295,46 @@ class DexParser:
 
     def __init__(
         self,
-        w3: Web3,
+        w3: Optional[Web3] = None,
         etherscan_api_key: Optional[str] = None,
-        coingecko_api_key: Optional[str] = None
+        coingecko_api_key: Optional[str] = None,
+        rpc_providers: Optional[List[str]] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0
     ):
         """
-        Initialize DEX parser.
+        Initialize DEX parser with RPC fallback support.
 
         Args:
-            w3: Web3 instance connected to Ethereum/BSC node
+            w3: Web3 instance connected to Ethereum/BSC node (optional if rpc_providers given)
             etherscan_api_key: Optional Etherscan API key for contract verification
             coingecko_api_key: Optional CoinGecko API key for price data
+            rpc_providers: List of RPC provider URLs for fallback
+            max_retries: Maximum retries per provider before rotating
+            retry_delay: Base delay between retries (exponential backoff)
         """
-        self.w3 = w3
+        # RPC provider management
+        self.rpc_providers = rpc_providers or self.DEFAULT_RPC_PROVIDERS.copy()
+        self.current_provider_index = 0
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.provider_failures: Dict[str, int] = {}  # Track failures per provider
+        self.unhealthy_providers: set = set()  # Providers marked as down
+        self.consecutive_failures = 0  # Track consecutive tx failures
+        self.max_consecutive_failures = 5  # Warn after this many failures
+
+        # Initialize Web3 with first provider or use provided instance
+        if w3 is not None:
+            self.w3 = w3
+            # Add the provided w3 provider to our list if not already there
+            if hasattr(w3.provider, 'endpoint_uri'):
+                provider_uri = w3.provider.endpoint_uri
+                if provider_uri and provider_uri not in self.rpc_providers:
+                    self.rpc_providers.insert(0, provider_uri)
+        else:
+            # Find first healthy provider
+            self._find_healthy_provider()
+
         self.etherscan_api_key = etherscan_api_key
         self.coingecko_api_key = coingecko_api_key
 
@@ -305,7 +347,193 @@ class DexParser:
         self.last_coingecko_call = 0
         self.coingecko_rate_limit = 1.2  # 50 calls/min = 1 call per 1.2s
 
-        logger.info("DexParser initialized")
+        logger.info(f"DexParser initialized with {len(self.rpc_providers)} RPC providers")
+        if hasattr(self, 'w3') and self.w3:
+            logger.debug(f"Primary RPC: {self.rpc_providers[self.current_provider_index]}")
+
+    def _find_healthy_provider(self) -> bool:
+        """
+        Find first healthy RPC provider by testing each one.
+
+        Returns:
+            bool: True if healthy provider found
+        """
+        logger.info("Checking RPC provider health...")
+
+        for i, provider in enumerate(self.rpc_providers):
+            if provider in self.unhealthy_providers:
+                continue
+
+            try:
+                w3 = Web3(Web3.HTTPProvider(
+                    provider,
+                    request_kwargs={'timeout': 10}  # Quick timeout for health check
+                ))
+
+                # Quick health check - get block number
+                if w3.is_connected():
+                    block = w3.eth.block_number
+                    if block > 0:
+                        self.w3 = w3
+                        self.current_provider_index = i
+                        logger.info(f"✅ Healthy provider found: {provider} (block {block:,})")
+                        return True
+
+                logger.debug(f"Provider {provider} failed health check")
+                self.unhealthy_providers.add(provider)
+
+            except Exception as e:
+                logger.debug(f"Provider {provider} unhealthy: {e}")
+                self.unhealthy_providers.add(provider)
+
+        logger.error("❌ No healthy RPC providers found!")
+        # Fallback to first provider anyway
+        self._connect_to_provider(0)
+        return False
+
+    def _connect_to_provider(self, index: int) -> bool:
+        """
+        Connect to RPC provider at given index.
+
+        Args:
+            index: Index in rpc_providers list
+
+        Returns:
+            bool: True if connection successful
+        """
+        if index >= len(self.rpc_providers):
+            logger.error("No more RPC providers available")
+            return False
+
+        provider_url = self.rpc_providers[index]
+        try:
+            self.w3 = Web3(Web3.HTTPProvider(
+                provider_url,
+                request_kwargs={'timeout': 30}
+            ))
+            self.current_provider_index = index
+
+            # Test connection
+            if self.w3.is_connected():
+                logger.info(f"Connected to RPC provider: {provider_url}")
+                return True
+            else:
+                logger.warning(f"Failed to connect to {provider_url}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Error connecting to {provider_url}: {e}")
+            return False
+
+    def _rotate_provider(self) -> bool:
+        """
+        Rotate to next RPC provider.
+
+        Returns:
+            bool: True if successfully rotated to new provider
+        """
+        # Mark current provider as failed
+        current_url = self.rpc_providers[self.current_provider_index]
+        self.provider_failures[current_url] = self.provider_failures.get(current_url, 0) + 1
+
+        # Try next providers
+        for i in range(len(self.rpc_providers)):
+            next_index = (self.current_provider_index + 1 + i) % len(self.rpc_providers)
+            if self._connect_to_provider(next_index):
+                return True
+
+        logger.error("All RPC providers failed")
+        return False
+
+    def _execute_with_retry(self, func, *args, **kwargs):
+        """
+        Execute a Web3 function with retry and provider rotation.
+
+        Optimized for speed: quick retries with fast provider rotation.
+
+        Args:
+            func: Function to execute
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Result of function call
+
+        Raises:
+            Exception: If all retries and providers exhausted
+        """
+        last_error = None
+        providers_tried = 0
+        healthy_providers = [p for p in self.rpc_providers if p not in self.unhealthy_providers]
+
+        if not healthy_providers:
+            # Reset unhealthy list if all providers marked as down
+            self.unhealthy_providers.clear()
+            healthy_providers = self.rpc_providers
+
+        max_providers_to_try = min(3, len(healthy_providers))  # Try at most 3 providers per call
+
+        while providers_tried < max_providers_to_try:
+            for attempt in range(self.max_retries):
+                try:
+                    result = func(*args, **kwargs)
+                    # Success - reset consecutive failures
+                    self.consecutive_failures = 0
+                    return result
+                except Exception as e:
+                    last_error = e
+                    error_msg = str(e).lower()
+
+                    # Check if it's a retryable error
+                    is_retryable = any(err in error_msg for err in [
+                        '500', '502', '503', '504',  # Server errors
+                        'timeout', 'timed out',
+                        'connection', 'network',
+                        'rate limit', 'too many requests',
+                        'internal server error'
+                    ])
+
+                    # Non-retryable errors - fail fast
+                    is_not_retryable = any(err in error_msg for err in [
+                        '400', 'bad request',  # Invalid request / old tx not in archive
+                        '404', 'not found',
+                        'invalid', 'does not exist'
+                    ])
+
+                    if is_not_retryable:
+                        # Fail immediately - don't retry or rotate providers
+                        raise e
+
+                    if is_retryable and attempt < self.max_retries - 1:
+                        # Quick retry with minimal delay
+                        delay = self.retry_delay * (1.5 ** attempt)  # Faster backoff: 0.5s, 0.75s
+                        time.sleep(delay)
+                        continue
+                    elif is_retryable:
+                        # Mark current provider as potentially unhealthy
+                        current_url = self.rpc_providers[self.current_provider_index]
+                        self.provider_failures[current_url] = self.provider_failures.get(current_url, 0) + 1
+                        if self.provider_failures[current_url] >= 3:
+                            self.unhealthy_providers.add(current_url)
+                        break
+                    else:
+                        # Non-retryable error (e.g., transaction not found)
+                        raise e
+
+            # Rotate to next provider
+            providers_tried += 1
+            if providers_tried < max_providers_to_try:
+                if not self._rotate_provider():
+                    break
+
+        # Track consecutive failures
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.max_consecutive_failures:
+            if self.consecutive_failures == self.max_consecutive_failures:
+                logger.warning(f"⚠️ {self.consecutive_failures} consecutive RPC failures - provider issues likely")
+
+        # All providers failed
+        raise last_error if last_error else Exception("All RPC providers exhausted")
 
     # ========================================================================
     # MAIN ENTRY POINT
@@ -327,9 +555,9 @@ class DexParser:
             SwapInfo if valid swap detected, None otherwise
         """
         try:
-            # Fetch transaction and receipt
-            tx = self.w3.eth.get_transaction(tx_hash)
-            receipt = self.w3.eth.get_transaction_receipt(tx_hash)
+            # Fetch transaction and receipt with retry
+            tx = self._execute_with_retry(self.w3.eth.get_transaction, tx_hash)
+            receipt = self._execute_with_retry(self.w3.eth.get_transaction_receipt, tx_hash)
 
             # Check if successful
             if receipt.status != 1:
@@ -459,8 +687,8 @@ class DexParser:
             # Classify action
             action = self._classify_action(token_in, token_out)
 
-            # Get timestamp
-            block = self.w3.eth.get_block(receipt.blockNumber)
+            # Get timestamp with retry
+            block = self._execute_with_retry(self.w3.eth.get_block, receipt.blockNumber)
             timestamp = datetime.fromtimestamp(block.timestamp)
 
             return SwapInfo(
@@ -560,8 +788,8 @@ class DexParser:
             # Classify action
             action = self._classify_action(token_in, token_out)
 
-            # Get timestamp
-            block = self.w3.eth.get_block(receipt.blockNumber)
+            # Get timestamp with retry
+            block = self._execute_with_retry(self.w3.eth.get_block, receipt.blockNumber)
             timestamp = datetime.fromtimestamp(block.timestamp)
 
             return SwapInfo(
@@ -650,14 +878,14 @@ class DexParser:
             return self.pair_cache[pair_address_lower]
 
         try:
-            # Query on-chain
+            # Query on-chain with retry
             pair_contract = self.w3.eth.contract(
                 address=Web3.toChecksumAddress(pair_address),
                 abi=self.PAIR_ABI
             )
 
-            token0 = pair_contract.functions.token0().call().lower()
-            token1 = pair_contract.functions.token1().call().lower()
+            token0 = self._execute_with_retry(pair_contract.functions.token0().call).lower()
+            token1 = self._execute_with_retry(pair_contract.functions.token1().call).lower()
 
             # Cache result
             self.pair_cache[pair_address_lower] = (token0, token1)
@@ -684,15 +912,15 @@ class DexParser:
             if (datetime.now() - info.last_updated).total_seconds() < 300:
                 return info
 
-        # Fetch from blockchain
+        # Fetch from blockchain with retry
         try:
             contract = self.w3.eth.contract(
                 address=Web3.toChecksumAddress(address),
                 abi=self.ERC20_ABI
             )
 
-            symbol = contract.functions.symbol().call()
-            decimals = contract.functions.decimals().call()
+            symbol = self._execute_with_retry(contract.functions.symbol().call)
+            decimals = self._execute_with_retry(contract.functions.decimals().call)
 
         except Exception as e:
             logger.warning(f"Failed to get token info for {address}: {e}")
