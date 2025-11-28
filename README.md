@@ -95,9 +95,3 @@ sqlite3 database/wallets.db "SELECT SUM(size_usd) FROM orders WHERE status='FILL
 8. `init_database.py` - Setup database (auto-runs)
 9. `trade_monitor.py` - Track performance (used by main.py)
 10. `edge_case_handlers.py` - Handle edge cases (used by signal_processor.py)
-
-**Questions?** Check USER_GUIDE.md - it has everything!
-
----
-
-**Ready to start copying profitable traders! 📈**
