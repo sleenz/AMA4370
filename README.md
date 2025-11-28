@@ -2,14 +2,6 @@
 
 **Automatically copy trades from profitable Ethereum wallets via ProfitView.**
 
-**Status:** ✅ Ready to run | Paper trading mode (no risk)
-
----
-
-## 🚀 Quick Start
-
-You've already deployed the ProfitView bot. Now on your computer:
-
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
@@ -26,31 +18,6 @@ python wallet_discovery.py
 # 5. Start copying trades
 python main.py
 ```
-
-**That's it!** The system will find profitable wallets and copy their trades.
-
----
-
-## 📖 Complete Guide
-
-**For detailed instructions, read:**
-```bash
-cat USER_GUIDE.md
-```
-
-The USER_GUIDE contains:
-- ✅ Detailed explanation of every file
-- ✅ Complete wallet discovery process
-- ✅ Step-by-step workflow with examples
-- ✅ Configuration guide
-- ✅ Troubleshooting
-- ✅ Performance monitoring
-- ✅ Safety & risk management
-
----
-
-## 📁 Essential Files
-
 **Core System:**
 - `wallet_discovery.py` - Find profitable wallets
 - `wallet_analyzer.py` - Monitor wallet activity
@@ -59,17 +26,12 @@ The USER_GUIDE contains:
 - `scripts/profitview_executor.py` - Send orders to ProfitView
 - `main.py` - Main program
 
-**Already Deployed:**
-- `profitview_bot.py` - Running on ProfitView servers
-
 **Configuration:**
 - `config/profitview_config.json` - Your ProfitView API keys (configured)
 - `config/api_keys.json` - Etherscan API key (add yours)
 - `config/config.json` - Trading parameters
 
----
-
-## 🎯 How It Works
+## How It Works
 
 ```
 1. DISCOVER WALLETS
@@ -108,12 +70,6 @@ The USER_GUIDE contains:
 
 ---
 
-## 📊 Monitor Performance
-
-**ProfitView Dashboard:**
-- URL: https://profitview.net/trading
-- Check: Bot logs, positions, P&L
-
 **Local Database:**
 ```bash
 # Recent orders
@@ -125,68 +81,7 @@ sqlite3 database/wallets.db "SELECT status, COUNT(*) FROM orders GROUP BY status
 # Total volume
 sqlite3 database/wallets.db "SELECT SUM(size_usd) FROM orders WHERE status='FILLED';"
 ```
-
----
-
-## 🔧 Troubleshooting
-
-**"Module not found"**
-```bash
-pip install -r requirements.txt
-```
-
-**"Order rejected - 403"**
-- Check ProfitView bot is Running (green status)
-- Check WooLive is connected
-- Restart ProfitView bot if needed
-
-**"No wallets found"**
-```bash
-python wallet_discovery.py  # Takes 10-15 minutes
-```
-
-**More help:** See `USER_GUIDE.md` troubleshooting section
-
----
-
-## 🚨 Safety
-
-**✅ You're in PAPER TRADING mode:**
-- No real money used
-- All trades on WooLive testnet
-- Perfect for testing and learning
-- Can run for weeks/months safely
-
-**Only switch to live after:**
-- 2-4 weeks successful paper trading
-- 100+ executed orders
-- Consistent profitability
-- Full understanding of risks
-
----
-
-## 📋 Quick Commands
-
-```bash
-# Test ProfitView
-python scripts/profitview_executor.py
-
-# Demo mode
-python main.py --demo
-
-# Find wallets
-python wallet_discovery.py
-
-# Start trading
-python main.py
-
-# Stop trading
-Ctrl+C
-```
-
----
-
-## 📚 Files Overview
+## Files Overview
 
 **10 Python files total:**
 
@@ -200,34 +95,6 @@ Ctrl+C
 8. `init_database.py` - Setup database (auto-runs)
 9. `trade_monitor.py` - Track performance (used by main.py)
 10. `edge_case_handlers.py` - Handle edge cases (used by signal_processor.py)
-
-**See USER_GUIDE.md for detailed description of each file.**
-
----
-
-## 🎯 Next Steps
-
-1. Read the complete guide:
-   ```bash
-   cat USER_GUIDE.md
-   ```
-
-2. Install and test:
-   ```bash
-   pip install -r requirements.txt
-   python scripts/profitview_executor.py
-   ```
-
-3. Run demo:
-   ```bash
-   python main.py --demo
-   ```
-
-4. Start for real:
-   ```bash
-   python wallet_discovery.py
-   python main.py
-   ```
 
 **Questions?** Check USER_GUIDE.md - it has everything!
 
